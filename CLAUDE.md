@@ -1,0 +1,52 @@
+# CLAUDE.md
+
+> Last reviewed: 2026-10-13
+
+MCP-сервер (Nuxt + `@nuxtjs/mcp-toolkit`, Docker, Redis) для коробочного Битрикс24 на BitrixVM.
+Пускает внешний ИИ к данным портала от имени сотрудника — через его OAuth-токен Битрикс24.
+Задание — `bx-shef/toolsai`, `docs/private/mcp-box.md`.
+
+**Правила процесса — [`docs/AGENT_RULES.md`](docs/AGENT_RULES.md): они главнее этого файла.**
+Коротко: в `main` только через PR (каждый коммит `main` выкатывается на VM портала за ~5 минут);
+собрал или доработал PR — `/code-review` и панель из пяти (навык `review-panel`); мерж — навык `merge-pr`.
+
+## Команды
+
+```bash
+npm ci
+npm run typecheck                 # типы сервера
+npm run build && npm test         # сквозные тесты гоняют собранный .output против подставного Битрикс24
+shellcheck deploy/bitrixvm/mcp-deploy.sh
+cp .env.example .env              # заполнить; затем:
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+```
+
+## Карта
+
+| Где | Что |
+|---|---|
+| `server/lib/` | чистая логика без автоимпортов Nuxt (тестируется напрямую): `config`, `crypto` (PKCE, AES-GCM), `store` (KV с истечением), `lock`, `b24` (обмен кода, refresh под блокировкой, REST), `oauth` (наш сервер авторизации), `audit` |
+| `server/middleware/00.auth.ts` | `/.well-known/*` (метаданные) и проверка Bearer на `/mcp` → `event.context.session` |
+| `server/routes/oauth/` | `register`, `authorize`, `callback` (возврат с портала), `token` |
+| `server/mcp/tools/` | инструменты MCP; REST — только через `b24Call()` (`server/utils/b24call.ts`): сотрудник из сессии, журнал |
+| `server/utils/services.ts` | синглтоны: конфиг, Redis/память, `B24`, `OAuthServer` |
+| `tests/` | `e2e.test.ts` — весь путь на собранном сервере против `fake-b24.mjs`; `lib.test.ts`; `repo.test.ts` — гарды |
+| `deploy/bitrixvm/` | `Makefile`, `mcp-deploy.sh` (выкат опросом git), `nginx-mcp.conf` — `docs/DEPLOY_BITRIXVM.md` |
+
+## Конвенции
+
+- **Кто вызывает — только из токена.** Инструмент никогда не берёт ID сотрудника из аргументов;
+  `b24Call()` берёт его из сессии. Обход прав Битрикс24 недопустим — в этом смысл схемы.
+- **Узкие инструменты, не «вызвать любой метод».** Каждый — с `annotations: READ_ONLY`, пока нет
+  режима записи (гард в `tests/repo.test.ts`). Запись — шаг 5 плана: отдельный список сотрудников,
+  подтверждение, журнал «было/стало».
+- **Персональные данные.** В журнал — только имена аргументов, не значения; ответы REST не логируем.
+  Токены Битрикс24 — только в Redis, refresh — зашифрован `ENCRYPTION_KEY`.
+- **Порт — только `127.0.0.1`**, у Redis портов нет (гард в `tests/repo.test.ts`).
+- **mcp-toolkit молодой** (0.24.2, версии закреплены точно): OAuth в нём нет, свои 404 на
+  `/.well-known/*` он ставит сам — поэтому метаданные отдаёт middleware, а не маршрут.
+- **Поведение Битрикс24 — по документации и живому порталу**, не по памяти (b24-dev-mcp,
+  `docs/OAUTH_CHECK.md`). Подставной `tests/fake-b24.mjs` повторяет только то, что проверено.
+- **Язык** — `docs/AGENT_RULES.md` §0: код по-английски; комментарии, документы, коммиты, PR — по-русски.
+- **Штамп `> Last reviewed: YYYY-MM-DD`** под заголовком каждого `.md` (проверяет `tests/repo.test.ts`).
+- **Откат мутации — из копии**, не `git checkout --`.

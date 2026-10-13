@@ -1,0 +1,27 @@
+{
+  "name": "toolsai-mcp",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "start": "node .output/server/index.mjs",
+    "test": "vitest run",
+    "typecheck": "nuxt prepare && tsc --noEmit -p server/tsconfig.json"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@nuxtjs/mcp-toolkit": "0.24.2",
+    "ioredis": "5.11.1",
+    "nuxt": "4.6.1",
+    "unstorage": "1.17.5",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "7.0.2",
+    "vitest": "5.0.4"
+  }
+}
