@@ -10,16 +10,17 @@ export default defineMcpTool({
     ownerType: z.enum(['deal', 'lead', 'contact', 'company']),
     ownerId: z.number().int().positive(),
     onlyCalls: z.boolean().default(false).describe('Только звонки'),
-    start: z.number().int().min(0).default(0),
+    start: z.number().int().min(0).default(0).describe('Смещение (next прошлого ответа)'),
   },
   handler: async (args) => {
     const filter: Record<string, unknown> = { OWNER_TYPE_ID: OWNER[args.ownerType], OWNER_ID: args.ownerId }
     if (args.onlyCalls) filter.TYPE_ID = 2
-    return { activities: await b24Call('crm_activity_list', 'crm.activity.list', {
+    const res = await b24Call('crm_activity_list', 'crm.activity.list', {
       filter,
       order: { ID: 'DESC' },
       select: ['ID', 'TYPE_ID', 'PROVIDER_ID', 'DIRECTION', 'SUBJECT', 'DESCRIPTION', 'START_TIME', 'END_TIME', 'DEADLINE', 'COMPLETED', 'RESPONSIBLE_ID'],
       start: args.start,
-    }, args) }
+    }, args)
+    return { activities: res.result, next: res.next ?? null, total: res.total }
   },
 })

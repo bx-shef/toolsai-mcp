@@ -7,7 +7,7 @@
 # Порядок установки — docs/DEPLOY_BITRIXVM.md.
 #
 # ⚠ Автоматически меняется ТОЛЬКО образ. docker-compose.yml на сервере ставит человек (шаг
-# «Обновить docker-compose.yml» в DEPLOY_BITRIXVM.md): compose решает, с какими правами запускается
+# «Обслуживание → make compose-diff / compose-apply» в DEPLOY_BITRIXVM.md): compose решает, с какими правами запускается
 # контейнер (privileged, тома, сеть), и брать его из репозитория автоматически значило бы, что запись
 # в main = root на VM портала. Образ же работает от uid 10001 без capabilities. Если compose в
 # новом коммите отличается от установленного, скрипт пишет об этом в журнал.
@@ -47,7 +47,7 @@ SRC="$STACK_DIR/src"
 
 mkdir -p "$STATE_DIR"
 cd "$STACK_DIR" || die "нет каталога $STACK_DIR"
-[ -d "$SRC/.git" ] || die "нет клона репозитория $SRC (шаг 2 DEPLOY_BITRIXVM.md)"
+[ -d "$SRC/.git" ] || die "нет клона репозитория $SRC (шаг 1 DEPLOY_BITRIXVM.md)"
 
 # Один запуск за раз: два `compose up` одновременно перезапускают контейнер друг у друга.
 exec 9>"$STATE_DIR/deploy.lock"
@@ -95,7 +95,7 @@ fi
 # после пуша). Остальные отказы pull — поломка, о ней кричим.
 if ! pull_err=$(docker pull --quiet "$IMAGE:$tag" 2>&1); then
   case "$pull_err" in
-    *"manifest unknown"*|*"not found"*|*"manifest for"*)
+    *"manifest unknown"*|*"manifest for"*"not found"*)
       log "образа $IMAGE:$tag ещё нет — CI собирает; попробую на следующем тике"
       exit 0 ;;
     *) die "не удалось скачать $IMAGE:$tag: $(printf '%s' "$pull_err" | tr '\n' ' ')" ;;
@@ -144,6 +144,9 @@ docker compose logs --tail=30 mcp 2>&1 | sed 's/^/    /' || true
 if [ -n "$prev_image" ] && apply "$prev_image"; then
   if [ -n "$deployed_sha" ] && healthy "$deployed_sha"; then
     log "откат выполнен: прежняя версия ${deployed_sha:0:$SHA_TAG_LENGTH} отвечает"
+  elif [ -z "$deployed_sha" ]; then
+    # Первый выкат скриптом: прежний контейнер поднят руками (make up) с :latest, его коммит неизвестен
+    log "откат на образ, поднятый руками, выполнен; его коммит скрипту неизвестен — проверьте make status"
   else
     log "откат выполнен, но прежняя версия не прошла /health — нужен человек"
   fi

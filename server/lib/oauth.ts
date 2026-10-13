@@ -14,13 +14,16 @@ export class OAuthError extends Error {
 }
 
 export interface Client { id: string, name: string, redirectUris: string[] }
-interface Pending { clientId: string, redirectUri: string, challenge: string, state?: string, scope?: string }
+interface Pending { clientId: string, clientName: string, redirectUri: string, challenge: string, state?: string, approved: boolean }
 interface Grant { clientId: string, redirectUri: string, challenge: string, userId: number }
 export interface Session { userId: number, clientId: string }
 
 const CODE_TTL = 120
 const LOGIN_TTL = 600
-const CLIENT_TTL = 365 * 24 * 3600
+// Регистрация открыта всем (так требует MCP) — клиент живёт месяц, а не год: меньше мусора в Redis.
+const CLIENT_TTL = 30 * 24 * 3600
+/** Имя cookie, которая привязывает вход к браузеру, начавшему его. */
+export const LOGIN_COOKIE = 'mcp_login'
 
 export const MCP_PATH = '/mcp'
 
@@ -66,7 +69,8 @@ export class OAuthServer {
 
   /** RFC 7591: только публичные клиенты (PKCE вместо секрета). */
   async register(body: any): Promise<Record<string, unknown>> {
-    const uris = body?.redirect_uris
+    if (!body || typeof body !== 'object') throw new OAuthError('invalid_client_metadata', 'Нужен JSON с redirect_uris')
+    const uris = body.redirect_uris
     if (!Array.isArray(uris) || uris.length === 0 || uris.length > 10 || !uris.every(validRedirect)) {
       throw new OAuthError('invalid_redirect_uri', 'redirect_uris: https или http://localhost')
     }
@@ -90,10 +94,10 @@ export class OAuthServer {
   }
 
   /**
-   * GET /oauth/authorize. Возвращает адрес входа на портал.
+   * GET /oauth/authorize: проверить запрос и завести вход. Дальше — экран согласия (approve).
    * Ошибки до проверки redirect_uri показываются человеку, а не уводят по адресу (RFC 6749 4.1.2.1).
    */
-  async authorize(q: Record<string, unknown>): Promise<string> {
+  async authorize(q: Record<string, unknown>): Promise<{ txn: string, clientName: string, redirectHost: string }> {
     const client = await this.client(q.client_id)
     const redirectUri = String(q.redirect_uri ?? '')
     if (!client.redirectUris.includes(redirectUri)) throw new OAuthError('invalid_request', 'redirect_uri не зарегистрирован')
@@ -104,35 +108,69 @@ export class OAuthServer {
     const txn = randomToken()
     const pending: Pending = {
       clientId: client.id,
+      clientName: client.name,
       redirectUri,
       challenge: q.code_challenge,
       state: typeof q.state === 'string' ? q.state : undefined,
+      approved: false,
     }
     await this.store.put(`login:${txn}`, pending, LOGIN_TTL)
+    return { txn, clientName: client.name, redirectHost: new URL(redirectUri).host }
+  }
+
+  /**
+   * POST /oauth/consent: человек на экране согласия разрешил или отказал.
+   * Защита от подмены входа: txn в форме должен совпасть с cookie браузера, начавшего вход.
+   * Иначе чужой клиент мог бы прислать сотруднику ссылку на портал и получить код с его правами.
+   */
+  async consent(txn: unknown, cookie: string | undefined, allow: boolean): Promise<string> {
+    if (typeof txn !== 'string' || !cookie || txn !== cookie) throw new OAuthError('access_denied', 'Вход начат в другом браузере — начните подключение заново', 403)
+    const pending = await this.store.get<Pending>(`login:${txn}`)
+    if (!pending) throw new OAuthError('invalid_request', 'Вход устарел — начните подключение заново')
+    if (!allow) {
+      await this.store.del(`login:${txn}`)
+      return this.back(pending, { error: 'access_denied', error_description: 'Сотрудник отказал' })
+    }
+    await this.store.put(`login:${txn}`, { ...pending, approved: true }, LOGIN_TTL)
     return this.b24.authorizeUrl(txn)
   }
 
-  /** GET /oauth/callback с портала. Возвращает, куда отправить браузер: клиенту с нашим кодом. */
-  async callback(q: Record<string, unknown>): Promise<string> {
-    const pending = typeof q.state === 'string' ? await this.store.take<Pending>(`login:${q.state}`) : null
-    if (!pending) throw new OAuthError('invalid_request', 'Вход устарел или уже использован — начните подключение заново')
-    if (typeof q.code !== 'string' || !q.code) throw new OAuthError('access_denied', 'Битрикс24 не вернул код')
+  private back(p: Pending, params: Record<string, string>): string {
+    const u = new URL(p.redirectUri)
+    for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v)
+    if (p.state !== undefined) u.searchParams.set('state', p.state)
+    return u.toString()
+  }
 
-    const back = new URL(pending.redirectUri)
-    if (pending.state !== undefined) back.searchParams.set('state', pending.state)
-
-    const { userId } = await this.b24.login(q.code, typeof q.server_domain === 'string' ? q.server_domain : undefined)
-    if (this.cfg.allowedUsers.size && !this.cfg.allowedUsers.has(userId)) {
+  /**
+   * GET /oauth/callback с портала. Возвращает, куда отправить браузер: клиенту с кодом или с ошибкой.
+   * После проверки входа любые сбои уходят клиенту редиректом (RFC 6749 4.1.2.1), а не JSON-ом в браузер.
+   */
+  async callback(q: Record<string, unknown>, cookie: string | undefined): Promise<string> {
+    if (typeof q.state !== 'string' || !cookie || q.state !== cookie) {
+      throw new OAuthError('access_denied', 'Вход начат в другом браузере — начните подключение заново', 403)
+    }
+    const pending = await this.store.take<Pending>(`login:${q.state}`)
+    if (!pending?.approved) throw new OAuthError('invalid_request', 'Вход устарел или уже использован — начните подключение заново')
+    if (typeof q.code !== 'string' || !q.code) {
+      return this.back(pending, { error: 'access_denied', error_description: 'Битрикс24 не вернул код' })
+    }
+    let userId: number
+    try {
+      ({ userId } = await this.b24.login(q.code, typeof q.server_domain === 'string' ? q.server_domain : undefined))
+    }
+    catch (e) {
+      console.error('[oauth] вход через Битрикс24:', e instanceof Error ? e.message : e)
+      return this.back(pending, { error: 'server_error', error_description: 'Битрикс24 не выдал токены — попробуйте ещё раз' })
+    }
+    if (!this.cfg.isAllowed(userId)) {
       await this.b24.forget(userId)
-      back.searchParams.set('error', 'access_denied')
-      back.searchParams.set('error_description', 'Доступ к MCP для этого сотрудника не открыт')
-      return back.toString()
+      return this.back(pending, { error: 'access_denied', error_description: 'Доступ к MCP для этого сотрудника не открыт' })
     }
     const code = randomToken()
     const grant: Grant = { clientId: pending.clientId, redirectUri: pending.redirectUri, challenge: pending.challenge, userId }
     await this.store.put(`code:${sha256(code)}`, grant, CODE_TTL)
-    back.searchParams.set('code', code)
-    return back.toString()
+    return this.back(pending, { code })
   }
 
   private async issue(userId: number, clientId: string) {
@@ -157,19 +195,23 @@ export class OAuthServer {
     if (body.grant_type === 'refresh_token') {
       const s = typeof body.refresh_token === 'string' ? await this.store.take<Session>(`rt:${sha256(body.refresh_token)}`) : null
       if (!s || s.clientId !== clientId) throw new OAuthError('invalid_grant', 'refresh_token неверный или устарел')
-      if (this.cfg.allowedUsers.size && !this.cfg.allowedUsers.has(s.userId)) throw new OAuthError('invalid_grant', 'Доступ закрыт')
+      if (!this.cfg.isAllowed(s.userId)) throw new OAuthError('invalid_grant', 'Доступ закрыт')
+      // Токенов Битрикс24 нет (отказ портала, истекли) — refresh бесполезен: клиент должен войти заново.
+      if (!await this.b24.hasTokens(s.userId)) throw new OAuthError('invalid_grant', 'Нужен новый вход через Битрикс24')
       return this.issue(s.userId, s.clientId)
     }
     throw new OAuthError('unsupported_grant_type', 'Только authorization_code и refresh_token')
   }
 
-  /** Bearer запроса к /mcp → кто вызывает. null — 401. ALLOWED_USERS проверяется на каждом запросе. */
+  /** Bearer запроса к /mcp → кто вызывает. null — 401. ALLOWED_USERS и наличие токенов Битрикс24 — на каждом запросе. */
   async verify(authorization: string | undefined | null): Promise<Session | null> {
     const m = /^Bearer\s+(\S+)$/i.exec(authorization ?? '')
     if (!m?.[1]) return null
     const s = await this.store.get<Session>(`at:${sha256(m[1])}`)
     if (!s) return null
-    if (this.cfg.allowedUsers.size && !this.cfg.allowedUsers.has(s.userId)) return null
+    if (!this.cfg.isAllowed(s.userId)) return null
+    // Портал отозвал вход сотрудника — наш токен тоже не годится: 401 запустит новый вход у клиента.
+    if (!await this.b24.hasTokens(s.userId)) return null
     return s
   }
 }

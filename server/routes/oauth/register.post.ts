@@ -1,6 +1,6 @@
 export default defineEventHandler(async (event) => {
   try {
-    const res = await useServices().oauth.register(await readBody(event))
+    const res = await useServices().oauth.register(await readParams(event))
     setResponseStatus(event, 201)
     return res
   }

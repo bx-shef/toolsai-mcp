@@ -39,7 +39,7 @@ GitHub main ──CI──► ghcr.io/bx-shef/toolsai-mcp:sha-<коммит>
 | `./` | каталог сервиса | 700 |
 | `Makefile` | команды обслуживания (`make` — список); копия из `src/` | 644 |
 | `docker-compose.yml` | копия из `src/`, меняется только руками | 644 |
-| `.env` | секрет приложения, ключ шифрования, `ALLOWED_USERS` | **600** |
+| `.env` | секрет приложения, ключ шифрования, пароль Redis, `ALLOWED_USERS` | **600** |
 | `deploy.env` | настройки автообновления | 600 |
 | `bin/mcp-deploy` | копия `deploy/bitrixvm/mcp-deploy.sh` (`make install`) | 755 |
 | `src/` | клон репозитория на развёрнутом коммите | |
@@ -58,7 +58,8 @@ GitHub main ──CI──► ghcr.io/bx-shef/toolsai-mcp:sha-<коммит>
 - Шаг 1 пройден: [`OAUTH_CHECK.md`](OAUTH_CHECK.md) — `client_id`, `client_secret` на руках.
 - Защита `main`, пакет GHCR публичный ([`REPO_SETUP_CHECKLIST.md`](REPO_SETUP_CHECKLIST.md)),
   в `main` есть коммит с зелёным «Build & Push to GHCR».
-- Docker на VM уже стоит (mp3-txt): `docker compose version`.
+- Docker на VM уже стоит (mp3-txt): `docker compose version`; есть `curl` и `jq` (ими пользуются `make status` и `make audit`).
+- Памяти хватает: `free -h`, столбец `available` — нужно ~0,7 ГБ сверх того, что уже занято порталом и mp3-txt.
 
 ## 0а. `.gitignore` портала (владелец)
 
@@ -91,7 +92,8 @@ nano .env
 - `PUBLIC_URL=https://b24.stuttgart.by/mcp-ai`, `B24_PORTAL_URL=https://b24.stuttgart.by`;
 - `B24_CLIENT_ID`, `B24_CLIENT_SECRET` — из локального приложения;
 - `ENCRYPTION_KEY` — `openssl rand -base64 32` (сменить потом = все входят заново);
-- `ALLOWED_USERS=1` — пилот на одном сотруднике (шаг 6 плана).
+- `ALLOWED_USERS=1` — пилот на одном сотруднике (шаг 6 плана). Обязательно: пусто — сервер не стартует, всем — `*`;
+- `REDIS_PASSWORD` — `openssl rand -hex 24`.
 
 ## 3. Первый запуск (bitrix)
 
@@ -111,8 +113,9 @@ make check
 nginx -T 2>/dev/null | grep -nE 'server_name|listen .*443|include'
 ```
 
-1. В `http { }` (любой файл, который nginx подключает на уровне http) — зона частоты:
+1. В `http { }` (любой файл, который nginx подключает на уровне http) — зоны частоты и соединений:
    `limit_req_zone $binary_remote_addr zone=mcp_ai:10m rate=10r/s;`
+   `limit_conn_zone $binary_remote_addr zone=mcp_ai_conn:10m;`
 2. В `server { }` HTTPS-сайта портала — `include` файла с содержимым
    `src/deploy/bitrixvm/nginx-mcp.conf`.
 3. `nginx -t && systemctl reload nginx`.
@@ -128,7 +131,8 @@ curl -si -X POST https://b24.stuttgart.by/mcp-ai/mcp | grep -i www-authenticate 
 ## 5. Подключить Claude (сотрудник из `ALLOWED_USERS`)
 
 claude.ai → Настройки → Коннекторы → «Добавить свой коннектор» → `https://b24.stuttgart.by/mcp-ai/mcp`.
-Откроется портал, вход, возврат в Claude. Проверка — попросить «кто я в Битрикс24?» (`user_current`),
+Откроется экран согласия сервера (кто просит доступ и куда уйдёт ответ) → «Разрешить» → портал,
+вход, возврат в Claude. Проверка — попросить «кто я в Битрикс24?» (`user_current`),
 на сервере — `make audit`.
 
 Claude Code: `claude mcp add --transport http b24 https://b24.stuttgart.by/mcp-ai/mcp`, затем `/mcp` — войти.
@@ -148,6 +152,7 @@ make resume          # включить, когда защита main стоит
 | Что развёрнуто | `make status` |
 | Кто что вызывал | `make audit N=100` |
 | Закрыть доступ сотруднику | убрать ID из `ALLOWED_USERS`, `make up` — действует сразу |
+| После отката выката | `make up` поднимает `:latest` — это последний **удачный** образ: скрипт перетегирует его только при успехе |
 | Выгнать всех | новый `ENCRYPTION_KEY`, `docker compose down && docker volume rm mcp_redis && make up` |
 | Новый compose из репозитория | `make compose-diff`, затем `make compose-apply` |
 | Обновить Makefile и скрипт | `make self-update` |

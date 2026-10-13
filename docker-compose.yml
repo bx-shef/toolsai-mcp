@@ -8,7 +8,7 @@ services:
     container_name: mcp
     env_file: .env
     environment:
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD:?Задайте REDIS_PASSWORD в .env}@redis:6379
     # Только локально: снаружи сервер виден через nginx портала (docs/DEPLOY_BITRIXVM.md, шаг nginx).
     # ⚠ Не убирать 127.0.0.1: Docker пишет свои правила iptables в обход firewalld, и порт
     # оказался бы открыт на внешнем адресе VM.
@@ -41,9 +41,13 @@ services:
     image: redis:7.4.6-alpine
     container_name: mcp-redis
     # Сессии клиентов и токены Битрикс24 сотрудников (refresh — зашифрован ENCRYPTION_KEY).
-    # Без пароля и protected-mode no: порт не опубликован, Redis виден только в сети compose
-    # (с protected-mode yes он отказывает контейнеру mcp — проверено).
-    command: ["redis-server", "--appendonly", "yes", "--save", "", "--protected-mode", "no"]
+    # Порт не опубликован, Redis виден только в сети compose; пароль — чтобы соседний контейнер в той
+    # же сети не прочёл сессии. protected-mode no: с yes Redis отказывает контейнеру mcp (проверено).
+    # maxmemory + noeviction: флуд регистраций упрётся в отказ записи, а не в OOM контейнера, и
+    # токены сотрудников не будут вытеснены.
+    command: ["sh", "-c", "exec redis-server --appendonly yes --save '' --protected-mode no --maxmemory 64mb --maxmemory-policy noeviction --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Задайте REDIS_PASSWORD в .env}
     # Сразу от uid redis (999) и без capabilities. Том — именованный: Docker создаёт его с владельцем
     # /data из образа, поэтому chown не нужен (с каталогом ./redis entrypoint пытался chown и падал).
     user: "999:999"

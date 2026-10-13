@@ -11,15 +11,20 @@ export async function b24Call(tool: string, method: string, params: Record<strin
   if (!session) throw createError({ statusCode: 401, message: 'Нет сессии' })
   const started = Date.now()
   try {
-    const result = await useServices().b24.call(session.userId, method, params)
+    const res = await useServices().b24.call(session.userId, method, params)
     audit({ user: session.userId, tool, method, args: Object.keys(args), ok: true, ms: Date.now() - started })
-    return result
+    return res
   }
   catch (e) {
     const code = e instanceof B24Error ? e.code : 'internal'
     audit({ user: session.userId, tool, method, args: Object.keys(args), ok: false, error: code, ms: Date.now() - started })
-    if (e instanceof ReloginRequired) throw createError({ statusCode: 401, message: 'Вход в Битрикс24 истёк — переподключите коннектор' })
-    if (e instanceof B24Error) throw createError({ statusCode: 502, message: `Битрикс24: ${e.code}: ${e.message}` })
+    // Портал не принял токены: забываем их — следующий запрос к /mcp получит 401 и клиент войдёт заново.
+    if (e instanceof ReloginRequired) {
+      await useServices().b24.forget(session.userId)
+      throw createError({ statusCode: 401, message: 'Вход в Битрикс24 истёк — повторите запрос, клиент предложит войти заново' })
+    }
+    // Клиенту — только код ошибки Битрикс24, без внутреннего текста.
+    if (e instanceof B24Error) throw createError({ statusCode: 502, message: `Битрикс24 отказал: ${e.code}` })
     throw e
   }
 }

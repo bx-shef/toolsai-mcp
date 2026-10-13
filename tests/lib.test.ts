@@ -11,13 +11,27 @@ const env = {
   B24_CLIENT_ID: 'local.x',
   B24_CLIENT_SECRET: 's',
   ENCRYPTION_KEY: randomBytes(32).toString('base64'),
+  ALLOWED_USERS: '1',
 }
 
 describe('config', () => {
   it('убирает хвостовой слэш, разбирает ALLOWED_USERS', () => {
     const c = loadConfig({ ...env, ALLOWED_USERS: '1, 15' })
     expect(c.publicUrl).toBe('https://b24.example/mcp-ai')
-    expect([...c.allowedUsers]).toEqual([1, 15])
+    expect(c.isAllowed(15)).toBe(true)
+    expect(c.isAllowed(2)).toBe(false)
+    expect(loadConfig({ ...env, ALLOWED_USERS: '*' }).isAllowed(999)).toBe(true)
+  })
+  it('пустой ALLOWED_USERS — отказ запуска (закрыто по умолчанию)', () => {
+    expect(() => loadConfig({ ...env, ALLOWED_USERS: '' })).toThrow(/ALLOWED_USERS/)
+    expect(() => loadConfig({ ...env, ALLOWED_USERS: ' , ' })).toThrow(/ALLOWED_USERS/)
+  })
+  it('сроки: опечатка — отказ запуска, а не «вечно истёкшие» токены', () => {
+    expect(() => loadConfig({ ...env, ACCESS_TTL_SEC: '1h' })).toThrow(/ACCESS_TTL_SEC/)
+    expect(loadConfig({ ...env, ACCESS_TTL_SEC: '600' }).accessTtlSec).toBe(600)
+  })
+  it('лишняя запятая в B24_OAUTH_SERVERS не ломает запуск', () => {
+    expect(loadConfig({ ...env, B24_OAUTH_SERVERS: 'https://oauth.bitrix.info,' }).b24OAuthServers).toEqual(['https://oauth.bitrix.info'])
   })
   it('не https и не localhost — отказ', () => {
     expect(() => loadConfig({ ...env, PUBLIC_URL: 'http://b24.example' })).toThrow(/https/)

@@ -26,6 +26,9 @@ export class B24Error extends Error {
 /** Битрикс24 не принял токены сотрудника — нужен новый вход. */
 export class ReloginRequired extends B24Error {}
 
+/** Ответ REST: result и, у списков, next (смещение следующей страницы) и total. */
+export interface RestResult { result: any, next?: number, total?: number }
+
 const AUTH_ERRORS = new Set(['invalid_token', 'NO_AUTH_FOUND', 'invalid_grant', 'expired_token'])
 const tokenKey = (userId: number) => `b24:tokens:${userId}`
 
@@ -78,11 +81,15 @@ export class B24 {
   async login(code: string, serverDomain?: string): Promise<{ userId: number, name: string }> {
     const server = this.pickServer(serverDomain)
     const body = await this.tokenRequest(server, { grant_type: 'authorization_code', code })
-    const me = await this.rest(body.access_token, 'user.current', {})
+    const { result: me } = await this.rest(body.access_token, 'user.current', {})
     const userId = Number(me.ID)
     if (!Number.isInteger(userId) || userId <= 0) throw new B24Error('bad_user', 'user.current не вернул ID')
-    await this.save(userId, body, server)
+    await withLock(tokenKey(userId), () => this.save(userId, body, server))
     return { userId, name: [me.NAME, me.LAST_NAME].filter(Boolean).join(' ') }
+  }
+
+  async hasTokens(userId: number): Promise<boolean> {
+    return (await this.store.get(tokenKey(userId))) !== null
   }
 
   async forget(userId: number) {
@@ -96,12 +103,20 @@ export class B24 {
       if (!t) throw new ReloginRequired('no_tokens', 'Нет входа в Битрикс24 — подключитесь заново')
       if (!force && t.expiresAt - this.now() > 60_000) return t.access
       const refresh = decrypt(this.cfg.encryptionKey, t.refreshEnc)
-      const body = await this.tokenRequest(t.server, { grant_type: 'refresh_token', refresh_token: refresh })
-      return (await this.save(userId, body, t.server)).access
+      try {
+        const body = await this.tokenRequest(t.server, { grant_type: 'refresh_token', refresh_token: refresh })
+        return (await this.save(userId, body, t.server)).access
+      }
+      catch (e) {
+        // Мёртвый refresh не держим: иначе каждый вызов снова бился бы в OAuth-сервер,
+        // а наш токен клиента оставался бы «живым» (OAuthServer.verify смотрит на наличие токенов).
+        if (e instanceof ReloginRequired) await this.store.del(tokenKey(userId))
+        throw e
+      }
     })
   }
 
-  private async rest(access: string, method: string, params: Record<string, unknown>): Promise<any> {
+  private async rest(access: string, method: string, params: Record<string, unknown>): Promise<RestResult> {
     if (!/^[a-z0-9_.]+$/i.test(method)) throw new B24Error('bad_method', `Недопустимое имя метода: ${method}`)
     const res = await this.fetchFn(`${this.cfg.portalUrl}/rest/${method}.json`, {
       method: 'POST',
@@ -115,11 +130,11 @@ export class B24 {
       const Err = AUTH_ERRORS.has(code) ? ReloginRequired : B24Error
       throw new Err(code, String(body.error_description || code), res.status)
     }
-    return body.result
+    return { result: body.result, next: body.next, total: body.total }
   }
 
   /** REST от имени сотрудника — действуют его права в Битрикс24. На expired_token — одно обновление и повтор. */
-  async call(userId: number, method: string, params: Record<string, unknown> = {}): Promise<any> {
+  async call(userId: number, method: string, params: Record<string, unknown> = {}): Promise<RestResult> {
     try {
       return await this.rest(await this.token(userId), method, params)
     }

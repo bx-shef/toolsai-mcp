@@ -4,7 +4,7 @@ const FIELDS = ['ID', 'TITLE', 'STAGE_ID', 'CATEGORY_ID', 'OPPORTUNITY', 'CURREN
 
 export default defineMcpTool({
   name: 'crm_deal_list',
-  description: 'Поиск сделок CRM (до 50). Фильтр — по правилам crm.deal.list: {"STAGE_ID":"NEW", ">OPPORTUNITY":1000, "%TITLE":"окна", "ASSIGNED_BY_ID":5}. Видны только сделки, доступные сотруднику.',
+  description: 'Поиск сделок CRM (до 50 за раз; ещё есть — в ответе next, передать его в start). Фильтр — по правилам crm.deal.list: {"STAGE_ID":"NEW", ">OPPORTUNITY":1000, "%TITLE":"окна", "ASSIGNED_BY_ID":5}. Видны только сделки, доступные сотруднику.',
   annotations: READ_ONLY,
   inputSchema: {
     filter: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.array(z.union([z.string(), z.number()]))])).optional().describe('Фильтр crm.deal.list'),
@@ -18,6 +18,7 @@ export default defineMcpTool({
       select: FIELDS,
       start: args.start,
     }, args)
-    return { deals: res }
+    // next — смещение следующей страницы (нет — страница последняя), total — сколько всего
+    return { deals: res.result, next: res.next ?? null, total: res.total }
   },
 })

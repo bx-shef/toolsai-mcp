@@ -21,7 +21,7 @@ describe('repo', () => {
 
   it('в .env.example нет секретов', () => {
     const env = readFileSync('.env.example', 'utf8')
-    for (const k of ['B24_CLIENT_SECRET', 'ENCRYPTION_KEY', 'B24_CLIENT_ID']) expect(env).toMatch(new RegExp(`^${k}=$`, 'm'))
+    for (const k of ['B24_CLIENT_SECRET', 'ENCRYPTION_KEY', 'B24_CLIENT_ID', 'REDIS_PASSWORD']) expect(env).toMatch(new RegExp(`^${k}=$`, 'm'))
   })
 
   it('штамп «Last reviewed» под заголовком каждого .md', () => {

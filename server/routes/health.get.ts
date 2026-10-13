@@ -7,7 +7,9 @@ export default defineEventHandler(async (event) => {
     return { status: 'ok', ready: true, commit }
   }
   catch (e) {
+    // /health виден снаружи через nginx — причину только в лог, не в ответ.
+    console.error('[health]', e instanceof Error ? e.message : e)
     setResponseStatus(event, 503)
-    return { status: 'error', ready: false, commit, error: e instanceof Error ? e.message : 'unknown' }
+    return { status: 'error', ready: false, commit }
   }
 })

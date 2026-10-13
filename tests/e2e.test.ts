@@ -26,6 +26,7 @@ function start(extraEnv: Record<string, string> = {}) {
       B24_CLIENT_ID: 'local.test',
       B24_CLIENT_SECRET: 'sec',
       ENCRYPTION_KEY: randomBytes(32).toString('base64'),
+      ALLOWED_USERS: '*',
       ...extraEnv,
     },
   })
@@ -46,27 +47,60 @@ async function waitUp() {
 
 const b64url = (b: Buffer) => b.toString('base64url')
 
-/** Полный вход, как у claude.ai. */
-async function login(redirect = REDIRECT) {
-  const reg = await (await fetch(`${BASE}/oauth/register`, {
+async function register(redirect = REDIRECT) {
+  return (await fetch(`${BASE}/oauth/register`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ client_name: 'test', redirect_uris: [redirect] }),
   })).json()
+}
+
+/** До экрана согласия: возвращает txn и cookie браузера, начавшего вход. */
+async function startLogin(reg: any, redirect = REDIRECT) {
   const verifier = b64url(randomBytes(32))
   const challenge = b64url(createHash('sha256').update(verifier).digest())
   const auth = new URL(`${BASE}/oauth/authorize`)
   for (const [k, v] of Object.entries({ client_id: reg.client_id, redirect_uri: redirect, response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256', state: 'st1' })) auth.searchParams.set(k, v)
-  const r1 = await fetch(auth, { redirect: 'manual' })
-  expect(r1.status).toBe(302)
+  const r = await fetch(auth, { redirect: 'manual' })
+  expect(r.status).toBe(200)
+  const html = await r.text()
+  expect(html).toContain('test')
+  expect(html).toContain(new URL(redirect).host)
+  expect(r.headers.get('x-frame-options')).toBe('DENY')
+  const txn = /name="txn" value="([^"]+)"/.exec(html)![1]!
+  const setCookie = r.headers.get('set-cookie')!
+  expect(setCookie).toMatch(/HttpOnly/i)
+  expect(setCookie).toMatch(/SameSite=Lax/i)
+  const cookie = setCookie.split(';')[0]!
+  return { verifier, txn, cookie }
+}
+
+async function consent(txn: string, cookie: string | null, decision = 'allow') {
+  return fetch(`${BASE}/oauth/consent`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', ...(cookie ? { cookie } : {}) },
+    body: new URLSearchParams({ txn, decision }),
+  })
+}
+
+async function portalReturn(state: string, cookie: string | null, code = `b24code-${Math.random()}`) {
+  const cb = new URL(`${BASE}/oauth/callback`)
+  cb.searchParams.set('code', code)
+  cb.searchParams.set('state', state)
+  cb.searchParams.set('server_domain', new URL(fake.url).host)
+  return fetch(cb, { redirect: 'manual', headers: cookie ? { cookie } : {} })
+}
+
+/** Полный вход, как у claude.ai: согласие, портал, возврат клиенту. */
+async function login(redirect = REDIRECT, code?: string) {
+  const reg = await register(redirect)
+  const { verifier, txn, cookie } = await startLogin(reg, redirect)
+  const r1 = await consent(txn, cookie)
+  expect(r1.status).toBe(303)
   const portal = new URL(r1.headers.get('location')!)
   expect(portal.origin + portal.pathname).toBe(`${fake.url}/oauth/authorize/`)
   expect(portal.searchParams.get('client_id')).toBe('local.test')
-  // портал впускает сотрудника и возвращает на наш callback
-  const cb = new URL(`${BASE}/oauth/callback`)
-  cb.searchParams.set('code', `b24code-${Math.random()}`)
-  cb.searchParams.set('state', portal.searchParams.get('state')!)
-  cb.searchParams.set('server_domain', new URL(fake.url).host)
-  const r2 = await fetch(cb, { redirect: 'manual' })
+  // портал впускает сотрудника и возвращает на наш callback — в том же браузере, с cookie
+  const r2 = await portalReturn(portal.searchParams.get('state')!, cookie, code)
   expect(r2.status).toBe(302)
   const back = new URL(r2.headers.get('location')!)
   return { reg, verifier, back }
@@ -157,8 +191,46 @@ describe.skipIf(!existsSync('.output/server/index.mjs'))('e2e', () => {
     expect(again.body.error).toBe('invalid_grant')
   })
 
+  it('подмена входа: ссылка на портал, открытая в чужом браузере, кода не даёт', async () => {
+    // атакующий начал вход своим клиентом и прислал сотруднику ссылку на портал
+    const reg = await register('https://evil.example/cb')
+    const { txn, cookie } = await startLogin(reg, 'https://evil.example/cb')
+    // без cookie браузера-инициатора согласие не принимается
+    expect((await consent(txn, null)).status).toBe(403)
+    // атакующий сам согласился в своём браузере, а на портал по ссылке зашёл сотрудник — у него нет cookie
+    const ok = await consent(txn, cookie)
+    const state = new URL(ok.headers.get('location')!).searchParams.get('state')!
+    const r = await portalReturn(state, null)
+    expect(r.status).toBe(403)
+    expect(r.headers.get('location')).toBeNull()
+    // и чужая cookie не подходит
+    const other = await startLogin(await register())
+    expect((await portalReturn(state, other.cookie)).status).toBe(403)
+  })
+
+  it('отказ на экране согласия — клиенту access_denied со state', async () => {
+    const { txn, cookie } = await startLogin(await register())
+    const r = await consent(txn, cookie, 'deny')
+    const back = new URL(r.headers.get('location')!)
+    expect(back.searchParams.get('error')).toBe('access_denied')
+    expect(back.searchParams.get('state')).toBe('st1')
+  })
+
+  it('портал не выдал токены — клиенту server_error редиректом, не JSON в браузер', async () => {
+    const { back } = await login(REDIRECT, 'b24code-fail')
+    expect(back.origin).toBe('http://localhost:6274')
+    expect(back.searchParams.get('error')).toBe('server_error')
+    expect(back.searchParams.get('state')).toBe('st1')
+  })
+
+  it('без согласия на портал не пускает', async () => {
+    const { txn, cookie } = await startLogin(await register())
+    // согласия не было — возврат с портала не принимается
+    expect((await portalReturn(txn, cookie)).status).toBe(400)
+  })
+
   it('чужой redirect_uri — ошибка без редиректа', async () => {
-    const reg = await (await fetch(`${BASE}/oauth/register`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ redirect_uris: [REDIRECT] }) })).json()
+    const reg = await register()
     const r = await fetch(`${BASE}/oauth/authorize?client_id=${reg.client_id}&redirect_uri=${encodeURIComponent('https://evil.example/cb')}&response_type=code&code_challenge=${'a'.repeat(43)}&code_challenge_method=S256`, { redirect: 'manual' })
     expect(r.status).toBe(400)
     expect(r.headers.get('location')).toBeNull()
@@ -181,11 +253,39 @@ describe.skipIf(!existsSync('.output/server/index.mjs'))('e2e', () => {
     expect(fake.calls.some((c: any) => c.path === '/oauth/token/' && c.query.grant_type === 'refresh_token')).toBe(true)
   })
 
+  it('списки отдают next и total', async () => {
+    const t = await fullToken()
+    const call = await mcp(t.access_token, 'tools/call', { name: 'crm_deal_list', arguments: { start: 50 } })
+    expect(JSON.parse(call.body.result.content[0].text)).toMatchObject({ deals: [{ ID: '51' }], next: 100, total: 120 })
+    const tasks = await mcp(t.access_token, 'tools/call', { name: 'task_list', arguments: {} })
+    expect(JSON.parse(tasks.body.result.content[0].text)).toMatchObject({ tasks: [{ id: '1' }], next: null, total: 1 })
+  })
+
+  it('портал отозвал вход — наш токен и refresh перестают работать, клиент войдёт заново', async () => {
+    const t = await fullToken()
+    fake.state.revoked = true
+    try {
+      const call = await mcp(t.access_token, 'tools/call', { name: 'crm_deal_get', arguments: { id: 1 } })
+      expect(call.body.result.isError).toBe(true)
+      expect((await mcp(t.access_token, 'tools/list')).status).toBe(401)
+      const r = await token({ grant_type: 'refresh_token', refresh_token: t.refresh_token, client_id: t.clientId })
+      expect(r.body.error).toBe('invalid_grant')
+    }
+    finally {
+      fake.state.revoked = false
+    }
+  })
+
   it('ошибка Битрикс24 — isError с кодом, не падение', async () => {
     const t = await fullToken()
     const call = await mcp(t.access_token, 'tools/call', { name: 'task_get', arguments: { id: 1 } })
     expect(call.body.result.isError).toBe(true)
     expect(call.body.result.content[0].text).toContain('ERROR_METHOD_NOT_FOUND')
+  })
+
+  it('/health не выдаёт внутренние подробности', async () => {
+    const h = await (await fetch(`${BASE}/health`)).json()
+    expect(Object.keys(h).sort()).toEqual(['commit', 'ready', 'status'])
   })
 
   it('ALLOWED_USERS: сотрудник не в списке — access_denied клиенту', async () => {

@@ -7,7 +7,7 @@ export function startFakeB24() {
   let n = 0
   const tokens = new Map() // access -> userId
   const refresh = new Map() // refresh -> userId
-  const state = { user: 7, expireNext: false }
+  const state = { user: 7, expireNext: false, revoked: false }
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x')
     let body = ''
@@ -19,6 +19,7 @@ export function startFakeB24() {
       if (q.get('client_secret') !== 'sec') return json(401, { error: 'invalid_client' })
       let uid
       if (q.get('grant_type') === 'authorization_code') {
+        if (q.get('code') === 'b24code-fail') return json(400, { error: 'invalid_grant' })
         if (!q.get('code')?.startsWith('b24code-')) return json(400, { error: 'invalid_grant' })
         uid = state.user
       } else {
@@ -33,11 +34,13 @@ export function startFakeB24() {
     if (url.pathname.startsWith('/rest/')) {
       const p = JSON.parse(body || '{}')
       const uid = tokens.get(p.auth)
-      if (!uid) return json(401, { error: 'invalid_token' })
+      if (!uid || state.revoked) return json(401, { error: 'invalid_token' })
       if (state.expireNext) { state.expireNext = false; tokens.delete(p.auth); return json(401, { error: 'expired_token' }) }
       const method = url.pathname.slice(6).replace(/\.json$/, '')
       if (method === 'user.current') return json(200, { result: { ID: String(uid), NAME: 'Тест', LAST_NAME: 'Тестов' } })
       if (method === 'crm.deal.get') return json(200, { result: { ID: String(p.id), TITLE: `Сделка ${p.id}`, _asUser: uid } })
+      if (method === 'crm.deal.list') return json(200, { result: [{ ID: String(p.start + 1) }], next: p.start + 50, total: 120 })
+      if (method === 'tasks.task.list') return json(200, { result: { tasks: [{ id: '1' }] }, total: 1 })
       return json(400, { error: 'ERROR_METHOD_NOT_FOUND', error_description: 'Method not found' })
     }
     json(404, {})

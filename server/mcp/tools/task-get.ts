@@ -5,5 +5,5 @@ export default defineMcpTool({
   description: 'Задача по ID: описание, сроки, участники, привязки к CRM.',
   annotations: READ_ONLY,
   inputSchema: { id: z.number().int().positive() },
-  handler: async ({ id }) => b24Call('task_get', 'tasks.task.get', { taskId: id }, { id }),
+  handler: async ({ id }) => (await b24Call('task_get', 'tasks.task.get', { taskId: id }, { id })).result,
 })
