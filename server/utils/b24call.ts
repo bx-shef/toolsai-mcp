@@ -23,6 +23,8 @@ export async function b24Call(tool: string, method: string, params: Record<strin
       await useServices().b24.forget(session.userId)
       throw createError({ statusCode: 401, message: 'Вход в Битрикс24 истёк — повторите запрос, клиент предложит войти заново' })
     }
+    // Отсутствие записи — отдельно: модель должна понять, что ID неверный, а не что портал сломан.
+    if (e instanceof B24Error && e.code === 'NOT_FOUND') throw createError({ statusCode: 404, message: 'Не найдено: записи с таким ID нет или она недоступна сотруднику' })
     // Клиенту — только код ошибки Битрикс24, без внутреннего текста.
     if (e instanceof B24Error) throw createError({ statusCode: 502, message: `Битрикс24 отказал: ${e.code}` })
     throw e

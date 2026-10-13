@@ -9,7 +9,7 @@ export default defineMcpTool({
   inputSchema: {
     filter: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.array(z.union([z.string(), z.number()]))])).optional().describe('Фильтр crm.deal.list'),
     order: z.enum(['DATE_MODIFY', 'DATE_CREATE', 'OPPORTUNITY']).default('DATE_MODIFY').describe('Сортировка по убыванию'),
-    start: z.number().int().min(0).default(0).describe('Смещение (из next прошлого ответа)'),
+    start: z.coerce.number().int().min(0).default(0).describe('Смещение (из next прошлого ответа)'),
   },
   handler: async (args) => {
     const res = await b24Call('crm_deal_list', 'crm.deal.list', {

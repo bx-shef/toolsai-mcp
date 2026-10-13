@@ -6,7 +6,7 @@ export default defineMcpTool({
   annotations: READ_ONLY,
   inputSchema: {
     filter: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.array(z.union([z.string(), z.number()]))])).optional(),
-    start: z.number().int().min(0).default(0).describe('Смещение (next прошлого ответа)'),
+    start: z.coerce.number().int().min(0).default(0).describe('Смещение (next прошлого ответа)'),
   },
   handler: async (args) => {
     const res = await b24Call('task_list', 'tasks.task.list', {
