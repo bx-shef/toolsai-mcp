@@ -38,6 +38,8 @@ export function startFakeB24() {
       if (state.expireNext) { state.expireNext = false; tokens.delete(p.auth); return json(401, { error: 'expired_token' }) }
       const method = url.pathname.slice(6).replace(/\.json$/, '')
       if (method === 'user.current') return json(200, { result: { ID: String(uid), NAME: 'Тест', LAST_NAME: 'Тестов' } })
+      if (method === 'crm.deal.get' && Number(p.id) === 404) return json(400, { error: '', error_description: 'Not found' })
+      if (method === 'tasks.task.get') return json(200, { result: Number(p.taskId) === 404 ? [] : { task: { id: String(p.taskId) } } })
       if (method === 'crm.deal.get') return json(200, { result: { ID: String(p.id), TITLE: `Сделка ${p.id}`, _asUser: uid } })
       if (method === 'crm.deal.list') return json(200, { result: [{ ID: String(p.start + 1) }], next: p.start + 50, total: 120 })
       if (method === 'tasks.task.list') return json(200, { result: { tasks: [{ id: '1' }] }, total: 1 })

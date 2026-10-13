@@ -3,7 +3,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { createStorage } from 'unstorage'
 import { describe, expect, it } from 'vitest'
-import { B24, type B24Tokens } from '../server/lib/b24'
+import { B24, fetchTransport, type B24Tokens } from '../server/lib/b24'
 import { loadConfig } from '../server/lib/config'
 import { OAuthServer } from '../server/lib/oauth'
 import { Store } from '../server/lib/store'
@@ -35,7 +35,7 @@ function setup(allowed = '*', user = 7) {
   const cfg = env(allowed)
   const store = new Store(createStorage())
   const ff = fakeFetch(user)
-  const b24 = new B24(cfg, store, ff.f)
+  const b24 = new B24(cfg, store, ff.f, Date.now, fetchTransport(cfg, ff.f))
   return { cfg, store, b24, oauth: new OAuthServer(cfg, store, b24), calls: ff.calls }
 }
 
@@ -144,7 +144,7 @@ describe('B24', () => {
     const cfg = env()
     const store = new Store(createStorage(), () => now)
     const ff = fakeFetch(7, 3600)
-    const b24 = new B24(cfg, store, ff.f, () => now)
+    const b24 = new B24(cfg, store, ff.f, () => now, fetchTransport(cfg, ff.f))
     await b24.login('c')
     expect((await b24.call(7, 'crm.deal.get')).result.auth).toBe('at1')
     now += (3600 - 30) * 1000

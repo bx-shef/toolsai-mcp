@@ -175,7 +175,7 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     const out = JSON.parse(call.body.result.content[0].text)
     expect(out).toMatchObject({ ID: '42', _asUser: 7 })
     // REST ушёл токеном СОТРУДНИКА, а не общим
-    const rest = fake.calls.filter((c: any) => c.path === '/rest/crm.deal.get.json').at(-1)
+    const rest = fake.calls.filter((c: any) => /^\/rest\/crm\.deal\.get(\.json)?$/.test(c.path)).at(-1)
     expect(rest.body.auth).toMatch(/^at\d+$/)
     // журнал: имена аргументов, без значений
     expect(logs).toMatch(/"kind":"audit","user":7,"tool":"crm_deal_get","method":"crm.deal.get","args":\["id"\],"ok":true/)
@@ -279,9 +279,22 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
 
   it('ошибка Битрикс24 — isError с кодом, не падение', async () => {
     const t = await fullToken()
-    const call = await mcp(t.access_token, 'tools/call', { name: 'task_get', arguments: { id: 1 } })
+    const call = await mcp(t.access_token, 'tools/call', { name: 'crm_lead_get', arguments: { id: 1 } })
     expect(call.body.result.isError).toBe(true)
     expect(call.body.result.content[0].text).toContain('ERROR_METHOD_NOT_FOUND')
+  })
+
+  it('нет записи — понятное «не найдено», ID строкой принимается', async () => {
+    const t = await fullToken()
+    const text = async (name: string, args: object) => (await mcp(t.access_token, 'tools/call', { name, arguments: args })).body.result
+    const deal = await text('crm_deal_get', { id: 404 })
+    expect(deal.isError).toBe(true)
+    expect(deal.content[0].text).toContain('Не найдено')
+    const task = await text('task_get', { id: '404' })
+    expect(task.isError).toBe(true)
+    expect(task.content[0].text).toContain('Не найдено')
+    const ok = await text('task_get', { id: '9' })
+    expect(JSON.parse(ok.content[0].text)).toEqual({ id: '9' })
   })
 
   it('/health не выдаёт внутренние подробности', async () => {

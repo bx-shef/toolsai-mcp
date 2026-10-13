@@ -7,12 +7,14 @@
     "build": "nuxt build",
     "start": "node .output/server/index.mjs",
     "test": "vitest run",
+    "smoke": "node smoke/observe.mjs",
     "typecheck": "nuxt prepare && tsc --noEmit -p server/tsconfig.json"
   },
   "engines": {
     "node": ">=22"
   },
   "dependencies": {
+    "@bitrix24/b24jssdk": "3.0.0",
     "@nuxtjs/mcp-toolkit": "0.24.2",
     "ioredis": "5.11.1",
     "nuxt": "4.6.1",
