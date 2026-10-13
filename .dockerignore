@@ -1,0 +1,9 @@
+node_modules/
+.output/
+.nuxt/
+.env
+deploy/
+docs/
+.claude/
+.github/
+redis/

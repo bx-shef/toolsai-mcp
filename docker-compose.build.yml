@@ -1,0 +1,5 @@
+# Локально: docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+services:
+  mcp:
+    build: .
+    image: toolsai-mcp:local
