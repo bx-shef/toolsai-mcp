@@ -140,7 +140,9 @@ fi
 
 log "новая версия не поднялась или не прошла /health — откатываюсь"
 docker compose logs --tail=30 mcp 2>&1 | sed 's/^/    /' || true
-[ -n "$deployed_sha" ] && git -C "$SRC" checkout --quiet --detach "$deployed_sha" 2>/dev/null || true
+if [ -n "$deployed_sha" ]; then
+  git -C "$SRC" checkout --quiet --detach "$deployed_sha" 2>/dev/null || true
+fi
 if [ -n "$prev_image" ] && apply "$prev_image"; then
   if [ -n "$deployed_sha" ] && healthy "$deployed_sha"; then
     log "откат выполнен: прежняя версия ${deployed_sha:0:$SHA_TAG_LENGTH} отвечает"
