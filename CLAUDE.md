@@ -30,7 +30,7 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 | `server/routes/oauth/` | `register`, `authorize`, `callback` (возврат с портала), `token` |
 | `server/mcp/tools/` | инструменты MCP; REST — только через `b24Call()` (`server/utils/b24call.ts`): сотрудник из сессии, журнал |
 | `server/utils/services.ts` | синглтоны: конфиг, Redis/память, `B24`, `OAuthServer` |
-| `tests/` | `e2e.test.ts` — весь путь на собранном сервере против `fake-b24.mjs`; `lib.test.ts`; `repo.test.ts` — гарды |
+| `tests/` | `e2e.test.ts` — весь путь на собранном сервере против `fake-b24.mjs` (в CI без сборки падает); `oauth.test.ts` — защитные проверки OAuth и `B24` с подставным временем и fetch; `lib.test.ts`; `repo.test.ts` — гарды |
 | `deploy/bitrixvm/` | `Makefile`, `mcp-deploy.sh` (выкат опросом git), `nginx-mcp.conf` — `docs/DEPLOY_BITRIXVM.md` |
 
 ## Конвенции

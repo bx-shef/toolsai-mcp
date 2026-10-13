@@ -51,6 +51,9 @@ describe('crypto', () => {
     expect(verifyPkce(v, ch)).toBe(true)
     expect(verifyPkce(`${v}x`, ch)).toBe(false)
     expect(verifyPkce('short', ch)).toBe(false)
+    // RFC 7636: verifier от 43 символов — короткий не принимаем, даже если хэш сошёлся
+    const v42 = 'a'.repeat(42)
+    expect(verifyPkce(v42, createHash('sha256').update(v42).digest('base64url'))).toBe(false)
   })
   it('шифрование: обратимо, подмена — ошибка', () => {
     const k = randomBytes(32)

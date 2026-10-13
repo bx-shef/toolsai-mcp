@@ -132,7 +132,8 @@ async function fullToken() {
   return { ...t.body, clientId: reg.client_id }
 }
 
-describe.skipIf(!existsSync('.output/server/index.mjs'))('e2e', () => {
+// В CI сборка обязательна: без .output тест не пропускается молча, а падает.
+describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e', () => {
   beforeAll(async () => {
     fake = await startFakeB24()
     start()
