@@ -13,13 +13,19 @@ const HOOK = env.B24TEST_WEBHOOK
 // Страж: только облачный тестовый портал по вебхуку, не боевой stuttgart
 if (!/^https:\/\/b24-[a-z0-9]+\.bitrix24\.[a-z]+\/rest\/\d+\/[a-z0-9]+\/$/.test(HOOK || '')) throw new Error('B24TEST_WEBHOOK is not a test-portal webhook')
 const hide = s => String(s).replaceAll(HOOK, '<webhook>/')
+for (const ev of ['uncaughtException', 'unhandledRejection']) process.on(ev, e => { console.error(hide(e?.stack ?? e)); process.exit(1) })
 const RUN = `mcp-smoke-${Date.now().toString(36)}`
 const PORT = 3921, BASE = `http://127.0.0.1:${PORT}`, REDIRECT = 'http://localhost:6274/callback'
 const log = []
 const note = (...a) => { const s = hide(a.join(' ')); log.push(s); console.log(s) }
 
+// Ошибки fetch несут адрес (с секретом вебхука) в cause — наружу отдаём без него.
+async function post(method, params) {
+  try { return await fetch(HOOK + method + '.json', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(params) }) }
+  catch { throw new Error(`${method}: network error`) }
+}
 async function hook(method, params = {}) {
-  const r = await fetch(HOOK + method + '.json', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(params) })
+  const r = await post(method, params)
   const j = await r.json()
   if (j.error) throw new Error(`${method}: ${j.error} ${j.error_description || ''}`)
   return j
@@ -50,7 +56,9 @@ const proxy = createServer(async (req, res) => {
     portalCalls.push(rec)
     if (!tokens.has(auth)) { rec.status = 401; return send(401, { error: 'invalid_token' }) }
     if (expireNext) { expireNext = false; tokens.delete(auth); rec.status = 401; rec.note = 'смоделирован expired_token'; return send(401, { error: 'expired_token', error_description: 'The access token provided has expired.' }) }
-    const r = await fetch(HOOK + method + '.json', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(p) })
+    let r
+    try { r = await post(method, p) }
+    catch { rec.status = 502; return send(502, { error: 'proxy_error' }) }
     const text = await r.text()
     rec.status = r.status; rec.ms = Date.now() - rec.t0
     res.writeHead(r.status, { 'content-type': 'application/json' }); return res.end(text)
@@ -63,13 +71,7 @@ const FAKE = `http://127.0.0.1:${proxy.address().port}`
 // --- засев ---
 note(`# Живой прогон ${RUN}`)
 note(`\n> Last reviewed: ${new Date().toISOString().slice(0, 10)}\n`)
-const company = (await hook('crm.company.add', { fields: { TITLE: `${RUN} Компания` } })).result
-const contact = (await hook('crm.contact.add', { fields: { NAME: 'Иван', LAST_NAME: RUN, COMPANY_ID: company } })).result
-const lead = (await hook('crm.lead.add', { fields: { TITLE: `${RUN} Лид` } })).result
-const deal = (await hook('crm.deal.add', { fields: { TITLE: `${RUN} Сделка`, OPPORTUNITY: 1500, CURRENCY_ID: 'BYN', COMPANY_ID: company, CONTACT_ID: contact } })).result
-const task = (await hook('tasks.task.add', { fields: { TITLE: `${RUN} Задача`, RESPONSIBLE_ID: 1, UF_CRM_TASK: [`D_${deal}`] } })).result.task.id
-const activity = (await hook('crm.activity.todo.add', { ownerTypeId: 2, ownerId: deal, title: `${RUN} Дело`, deadline: new Date(Date.now() + 864e5).toISOString() })).result?.id
-note(`Засеяно: компания ${company}, контакт ${contact}, лид ${lead}, сделка ${deal}, задача ${task}, дело ${activity}`)
+let company, contact, lead, deal, task, activity
 
 // --- сервер ---
 let srvLog = ''
@@ -82,6 +84,13 @@ app.stdout.on('data', d => { srvLog += d }); app.stderr.on('data', d => { srvLog
 for (let i = 0; i < 100; i++) { try { if ((await fetch(`${BASE}/health`)).ok) break } catch {} await new Promise(r => setTimeout(r, 100)) }
 
 try {
+  company = (await hook('crm.company.add', { fields: { TITLE: `${RUN} Компания` } })).result
+  contact = (await hook('crm.contact.add', { fields: { NAME: 'Иван', LAST_NAME: RUN, COMPANY_ID: company } })).result
+  lead = (await hook('crm.lead.add', { fields: { TITLE: `${RUN} Лид` } })).result
+  deal = (await hook('crm.deal.add', { fields: { TITLE: `${RUN} Сделка`, OPPORTUNITY: 1500, CURRENCY_ID: 'BYN', COMPANY_ID: company, CONTACT_ID: contact } })).result
+  task = (await hook('tasks.task.add', { fields: { TITLE: `${RUN} Задача`, RESPONSIBLE_ID: 1, UF_CRM_TASK: [`D_${deal}`] } })).result.task.id
+  activity = (await hook('crm.activity.todo.add', { ownerTypeId: 2, ownerId: deal, title: `${RUN} Дело`, deadline: new Date(Date.now() + 864e5).toISOString() })).result?.id
+  note(`Засеяно: компания ${company}, контакт ${contact}, лид ${lead}, сделка ${deal}, задача ${task}, дело ${activity}`)
   // --- вход как MCP-клиент ---
   const reg = await (await fetch(`${BASE}/oauth/register`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ client_name: 'smoke', redirect_uris: [REDIRECT] }) })).json()
   const verifier = randomBytes(32).toString('base64url')

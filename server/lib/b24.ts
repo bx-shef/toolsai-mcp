@@ -163,8 +163,8 @@ function restError(code: string, description: string, status = 0): B24Error {
 /**
  * Боевой транспорт — b24jssdk 3.0.0. Обмен кода и refresh остаются нашими (в SDK их нет либо
  * защита только внутри экземпляра): SDK получает готовый access и наш refresh через
- * setCustomRefreshAuth. Экземпляр на вызов: лимитер SDK тогда работает в пределах одного вызова,
- * зато нет кеша токенов, который разошёлся бы с Redis.
+ * setCustomRefreshAuth. Экземпляр на вызов: лимитер SDK действует только в пределах одного вызова
+ * (общего лимита на сотрудника нет — issue #2), зато нет кеша токенов, который разошёлся бы с Redis.
  */
 export function sdkTransport(cfg: Config): RestTransport {
   const portal = new URL(cfg.portalUrl)
@@ -208,7 +208,7 @@ export function sdkTransport(cfg: Config): RestTransport {
     }
     catch (e) {
       // Наш refresh отказал (вход истёк) — отдаём его ошибку, а не обёртку SDK.
-      if (refreshError instanceof B24Error) throw refreshError
+      if (refreshError) throw refreshError instanceof B24Error ? refreshError : new B24Error('refresh_failed', 'refresh failed', 0)
       if (e instanceof B24Error) throw e
       const err = e as { code?: string, message?: string, status?: number, originalError?: { response?: { data?: { error?: string, error_description?: string } } } }
       // При пустом коде портала SDK теряет его описание («Not found»); исходный ответ лежит в originalError.

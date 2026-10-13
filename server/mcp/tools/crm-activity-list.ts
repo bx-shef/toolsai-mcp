@@ -10,7 +10,7 @@ export default defineMcpTool({
     ownerType: z.enum(['deal', 'lead', 'contact', 'company']),
     ownerId: z.coerce.number().int().positive(),
     onlyCalls: z.boolean().default(false).describe('Только звонки'),
-    start: z.number().int().min(0).default(0).describe('Смещение (next прошлого ответа)'),
+    start: z.coerce.number().int().min(0).default(0).describe('Смещение (next прошлого ответа)'),
   },
   handler: async (args) => {
     const filter: Record<string, unknown> = { OWNER_TYPE_ID: OWNER[args.ownerType], OWNER_ID: args.ownerId }
