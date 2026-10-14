@@ -122,6 +122,15 @@ describe('manifest', async () => {
     expect(r.errors).toHaveLength(9)
     expect(parseManifest('мусор', 'shef.mcp.tools', new Set()).tools).toEqual([])
   })
+  it('схема с $ref — отказ; текст для модели без управляющих и bidi; заголовок в одну строку', () => {
+    expect(parseManifest([{ ...ok, input: { type: 'object', properties: { a: { $ref: '#' } } } }], 'shef.mcp.tools', new Set()).tools).toEqual([])
+    const r = parseManifest([{ ...ok, description: 'Статья\u202Eтайно\u0007', title: 'А\nБ' }], 'shef.mcp.tools', new Set())
+    expect(r.tools[0]).toMatchObject({ description: 'Статьятайно', title: 'А Б' })
+  })
+  it('аргументы методу — только из схемы, без служебных', async () => {
+    const { pickArgs } = await import('../server/lib/manifest')
+    expect(pickArgs({ type: 'object', properties: { id: {}, auth: {}, _x: {} } }, { id: 1, auth: 'a', _x: 1, start: 50 })).toEqual({ id: 1 })
+  })
   it('удаление — опасное, запись — не только чтение', () => {
     expect(annotationsFor('delete')).toMatchObject({ readOnlyHint: false, destructiveHint: true })
     expect(annotationsFor('write')).toMatchObject({ readOnlyHint: false, destructiveHint: false })

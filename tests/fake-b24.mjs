@@ -7,7 +7,7 @@ export function startFakeB24() {
   let n = 0
   const tokens = new Map() // access -> userId
   const refresh = new Map() // refresh -> userId
-  const state = { user: 7, expireNext: false, revoked: false }
+  const state = { user: 7, expireNext: false, revoked: false, manifestFail: false }
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x')
     let body = ''
@@ -38,6 +38,7 @@ export function startFakeB24() {
       if (state.expireNext) { state.expireNext = false; tokens.delete(p.auth); return json(401, { error: 'expired_token' }) }
       const method = url.pathname.slice(6).replace(/\.json$/, '')
       // Модуль портала: манифест и его методы (docs/MODULE_TOOLS.md)
+      if (method === 'shef.mcp.tools' && state.manifestFail) { state.manifestFail = false; return json(400, { error: 'MODULE_BROKEN', error_description: 'временный сбой модуля' }) }
       if (method === 'shef.mcp.tools') return json(200, { result: [
         { name: 'kb_search', method: 'shef.kb.search', kind: 'read', description: 'Поиск статей базы знаний',
           input: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'integer', maximum: 50 } }, required: ['query'] } },

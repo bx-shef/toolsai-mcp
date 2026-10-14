@@ -16,7 +16,22 @@
    модель видит `kb_search`, `kb_get`… → вызов идёт в названный REST-метод тем же токеном.
 
 Права проверяет модуль, как в любом REST-методе: вызов идёт от имени сотрудника, `$USER` — он.
-Модуль может отдавать разным сотрудникам разный манифест (например, без `kb_delete` тем, кому нельзя).
+Модуль может отдавать разным сотрудникам разный манифест (например, без `kb_delete` тем, кому нельзя);
+отзыв права в манифесте доходит до клиента за 5 минут (кеш), проверка в самом методе — сразу.
+
+## Доверие
+
+Тексты манифеста (`description`, `title`) читает модель — значит, модуль может ей «подсказывать».
+Поэтому `MODULE_MANIFESTS` задаёт **администратор сервера** и только для своих, доверенных модулей.
+Сервер со своей стороны:
+- манифест может назвать только методы **своего вендора** (`shef.mcp.tools` → `shef.*`). Внутри
+  вендора границы нет: манифест `shef.*` может назвать и `shef.toolsai.*` — это ваши же модули;
+- вырезает из текстов управляющие и bidi-символы, заголовок — в одну строку;
+- запись и удаление — только `WRITE_USERS`, с пометками для подтверждения человеком;
+- методу уходят **только ключи из `input.properties`**: лишние (`filter`, `start`, что модуль читает
+  сверх схемы) отбрасываются, `auth`, `access_token` и ключи на `_` — всегда;
+- манифест ждёт не дольше 3 секунд: медленный модуль остаётся без инструментов в этот раз, встроенные
+  работают. «Модуля нет» и «нет права» помнит минуту, прочие сбои не помнит.
 
 ## Манифест
 
@@ -55,10 +70,11 @@
 | `description` | обязательно, до 1000 знаков: по нему модель решает, **когда** звать. Писать, что делает и что возвращает |
 | `method` | REST-метод **того же вендора**, что и манифест (`shef.mcp.tools` → только `shef.*`), не сам манифест |
 | `kind` | `read` (по умолчанию), `write` (создать, изменить), `delete` |
-| `input` | JSON Schema объекта, до 8000 знаков. Сервер проверяет аргументы по ней **до** вызова портала |
+| `input` | JSON Schema объекта, до 8000 знаков, без `$ref`/`$defs`. Сервер проверяет аргументы по ней **до** вызова портала, лишние ключи отбрасывает |
 | `title` | необязательно, подпись для человека |
 
 Плохая запись пропускается, остальные работают; причина — в журнале сервера (`"kind":"manifest"`).
+Одно имя в двух модулях — работает первый, второй в журнал.
 
 **Запись и удаление** (`write`, `delete`) видны только сотрудникам из `WRITE_USERS` (формат как
 `ALLOWED_USERS`; пусто — никому). Клиент получает пометку «не только чтение» / «разрушающее» и
@@ -82,6 +98,7 @@
 ```php
 namespace Shef\Kb;
 
+use Bitrix\Main\Engine\CurrentUser;
 use Bitrix\Rest\RestException;
 
 class Rest
@@ -92,7 +109,6 @@ class Rest
             'shef_kb' => [                       // область прав: её нужно выдать приложению
                 'shef.mcp.tools' => [__CLASS__, 'tools'],
                 'shef.kb.search' => [__CLASS__, 'search'],
-                'shef.kb.get'    => [__CLASS__, 'get'],
                 'shef.kb.delete' => [__CLASS__, 'delete'],
             ],
         ];
@@ -111,7 +127,7 @@ class Rest
                 'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 50],
             ]],
         ]];
-        if (Access::canDelete($GLOBALS['USER']->GetID())) {
+        if (Access::canDelete((int)CurrentUser::get()->getId())) {
             $tools[] = [
                 'name' => 'kb_delete', 'description' => 'Удаляет статью по id.', 'method' => 'shef.kb.delete',
                 'kind' => 'delete',
@@ -123,14 +139,18 @@ class Rest
 
     public static function search(array $query, $nav, \CRestServer $server): array
     {
+        $text = trim((string)($query['query'] ?? ''));
+        if ($text === '') {
+            throw new RestException('Нужен query', 'INVALID_ARG_VALUE', \CRestServer::STATUS_WRONG_REQUEST);
+        }
         $limit = min(50, max(1, (int)($query['limit'] ?? 20)));
-        return Article::searchForUser((string)$query['query'], $GLOBALS['USER']->GetID(), $limit);
+        return Article::searchForUser($text, (int)CurrentUser::get()->getId(), $limit);
     }
 
     public static function delete(array $query, $nav, \CRestServer $server): bool
     {
         $id = (int)($query['id'] ?? 0);
-        if (!Access::canDelete($GLOBALS['USER']->GetID(), $id)) {
+        if (!Access::canDelete((int)CurrentUser::get()->getId(), $id)) {
             throw new RestException('Нет права', 'ACCESS_DENIED', \CRestServer::STATUS_FORBIDDEN);
         }
         return Article::delete($id);
@@ -151,5 +171,6 @@ class Rest
 3. `MODULE_MANIFESTS=shef.mcp.tools`, для записи — `WRITE_USERS`, перезапуск сервера.
 4. В журнале нет `"kind":"manifest"` с ошибками; в клиенте видны новые инструменты.
 
-Не проверено на живой коробке: видна ли своя область модуля в списке прав локального приложения —
-сверить на стенде (шаг 2).
+Не проверено на живой коробке (сверить на стенде): пример PHP целиком и то, видна ли своя область
+модуля в списке прав локального приложения (шаг 2). Форма описания методов и сигнатура колбэка — по
+коду ядра (`calendar/classes/general/calendar_restservice.php`, `rest/classes/general/rest.php`).

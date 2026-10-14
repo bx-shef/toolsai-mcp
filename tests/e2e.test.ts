@@ -297,6 +297,16 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(JSON.parse(ok.content[0].text)).toEqual({ id: '9' })
   })
 
+  it('сбой манифеста не кешируется: следующий запрос получает инструменты модуля', async () => {
+    fake.state.user = 8 // свой сотрудник — свой кеш манифеста
+    fake.state.manifestFail = true
+    const t = await fullToken()
+    fake.state.user = 7
+    const names = async () => (await mcp(t.access_token, 'tools/list')).body.result.tools.map((x: any) => x.name)
+    expect(await names()).not.toContain('kb_search')
+    expect(await names()).toContain('kb_search')
+  })
+
   it('инструменты модуля: из манифеста, только своего вендора, запись — только WRITE_USERS', async () => {
     const t = await fullToken()
     const list = await mcp(t.access_token, 'tools/list')
@@ -310,6 +320,10 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(JSON.parse(call.body.result.content[0].text)).toMatchObject({ result: [{ title: 'Статья про отпуск', _asUser: 7 }], total: 1 })
     const rest = fake.calls.filter((c: any) => /^\/rest\/shef\.kb\.search/.test(c.path)).at(-1)
     expect(rest.body).toMatchObject({ query: 'отпуск', auth: expect.stringMatching(/^at\d+$/) })
+    // лишние ключи до портала не доходят
+    await mcp(t.access_token, 'tools/call', { name: 'kb_search', arguments: { query: 'x', filter: { ID: 1 }, start: 50 } })
+    const rest2 = fake.calls.filter((c: any) => /^\/rest\/shef\.kb\.search/.test(c.path)).at(-1)
+    expect(Object.keys(rest2.body).sort()).toEqual(['auth', 'query'])
     // схема из манифеста проверяется до портала
     const bad = await mcp(t.access_token, 'tools/call', { name: 'kb_search', arguments: { limit: 500 } })
     expect(bad.body.result.isError).toBe(true)

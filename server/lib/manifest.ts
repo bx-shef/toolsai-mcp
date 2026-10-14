@@ -17,6 +17,27 @@ export interface ModuleTool {
 
 export const MAX_TOOLS = 50
 const MAX_SCHEMA = 8_000
+const MAX_DEPTH = 6
+
+/** Текст для модели без управляющих и bidi-символов: ими прячут инструкции от человека. */
+export function cleanText(s: string, max: number, oneLine = false): string {
+  // eslint-disable-next-line no-control-regex
+  let t = s.replace(/[\u0000-\u0008\u000B-\u001F\u007F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
+  if (oneLine) t = t.replace(/\s+/g, ' ')
+  return t.trim().slice(0, max)
+}
+
+/** Схема без ссылок ($ref/$defs/$id/$anchor) и не глубже MAX_DEPTH: ссылки могут зацикливаться. */
+function plainSchema(v: unknown, depth = 0): boolean {
+  if (depth > MAX_DEPTH * 2) return false
+  if (Array.isArray(v)) return v.every(x => plainSchema(x, depth + 1))
+  if (!v || typeof v !== 'object') return true
+  for (const [k, x] of Object.entries(v)) {
+    if (['$ref', '$defs', 'definitions', '$id', '$anchor', '$dynamicRef', '$recursiveRef'].includes(k)) return false
+    if (!plainSchema(x, depth + 1)) return false
+  }
+  return true
+}
 
 /** Префикс методов, которые может назвать манифест: вендор метода-манифеста («shef.mcp.tools» → «shef.»). */
 export function vendorPrefix(manifestMethod: string): string {
@@ -65,18 +86,19 @@ export function parseManifest(raw: unknown, manifestMethod: string, reserved: Se
       errors.push(`${name}: kind — read, write или delete`)
       continue
     }
-    const description = typeof t.description === 'string' ? t.description.trim().slice(0, 1000) : ''
+    const description = typeof t.description === 'string' ? cleanText(t.description, 1000) : ''
     if (!description) {
       errors.push(`${name}: нужно description — по нему модель решает, когда звать инструмент`)
       continue
     }
     const input = t.input ?? { type: 'object', properties: {} }
-    if (!input || typeof input !== 'object' || Array.isArray(input) || (input as any).type !== 'object' || JSON.stringify(input).length > MAX_SCHEMA) {
-      errors.push(`${name}: input — JSON Schema с type: object, до ${MAX_SCHEMA} символов`)
+    if (!input || typeof input !== 'object' || Array.isArray(input) || (input as any).type !== 'object' || JSON.stringify(input).length > MAX_SCHEMA || !plainSchema(input)) {
+      errors.push(`${name}: input — JSON Schema с type: object, до ${MAX_SCHEMA} символов, без $ref`)
       continue
     }
     seen.add(name)
-    tools.push({ name, method, kind, description, input, ...(typeof t.title === 'string' && t.title.trim() ? { title: t.title.trim().slice(0, 100) } : {}) })
+    const title = typeof t.title === 'string' ? cleanText(t.title, 100, true) : ''
+    tools.push({ name, method, kind, description, input, ...(title ? { title } : {}) })
   }
   return { tools, errors }
 }
@@ -89,3 +111,14 @@ export function annotationsFor(kind: ToolKind) {
 
 /** Имена встроенных инструментов (server/mcp/tools): модуль их не перекрывает. Сверку держит tests/repo.test.ts. */
 export const BUILTIN_TOOLS = new Set(['user_current', 'crm_activity_list', 'crm_company_get', 'crm_contact_get', 'crm_deal_get', 'crm_deal_list', 'crm_lead_get', 'task_get', 'task_list'])
+
+/** Ключи, которые модель может передать методу: только объявленные в схеме, без служебных REST. */
+export function pickArgs(input: Record<string, unknown>, args: Record<string, unknown> | undefined): Record<string, unknown> {
+  const allowed = new Set(Object.keys((input.properties as Record<string, unknown>) ?? {}))
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(args ?? {})) {
+    if (!allowed.has(k) || k === 'auth' || k === 'access_token' || k.startsWith('_')) continue
+    out[k] = v
+  }
+  return out
+}
