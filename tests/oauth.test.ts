@@ -16,14 +16,14 @@ const env = (allowed = '*') => loadConfig({
 })
 
 /** Подставной Битрикс24: обмен кода и user.current; сотрудник — user. */
-function fakeFetch(user = 7, expiresIn = 3600) {
+function fakeFetch(user = 7, expiresIn = 3600, endpoint = 'https://p.example/rest/') {
   const calls: URL[] = []
   let n = 0
   const f = (async (input: any, init?: any) => {
     const u = new URL(String(input))
     calls.push(u)
     const json = (o: object, status = 200) => new Response(JSON.stringify(o), { status })
-    if (u.pathname === '/oauth/token/') return json({ access_token: `at${++n}`, refresh_token: `rt${n}`, expires_in: expiresIn })
+    if (u.pathname === '/oauth/token/') return json({ access_token: `at${++n}`, refresh_token: `rt${n}`, expires_in: expiresIn, client_endpoint: endpoint, member_id: 'm0123456789' })
     if (u.pathname === '/rest/user.current.json') return json({ result: { ID: String(user) } })
     if (u.pathname === '/rest/crm.deal.get.json') return json({ result: { auth: JSON.parse(init.body).auth } })
     return json({ error: 'NOT_FOUND' }, 404)
@@ -31,10 +31,10 @@ function fakeFetch(user = 7, expiresIn = 3600) {
   return { f, calls }
 }
 
-function setup(allowed = '*', user = 7) {
+function setup(allowed = '*', user = 7, endpoint?: string) {
   const cfg = env(allowed)
   const store = new Store(createStorage())
-  const ff = fakeFetch(user)
+  const ff = fakeFetch(user, 3600, endpoint)
   const b24 = new B24(cfg, store, ff.f, Date.now, fetchTransport(cfg, ff.f))
   return { cfg, store, b24, oauth: new OAuthServer(cfg, store, b24), calls: ff.calls }
 }
@@ -48,7 +48,7 @@ async function codeFor(o: OAuthServer) {
   const c = await o.register({ redirect_uris: [RU] }) as any
   const { verifier, challenge } = pkce()
   const { txn } = await o.authorize({ client_id: c.client_id, redirect_uri: RU, response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256', state: 's' })
-  await o.consent(txn, txn, true)
+  await o.consent(txn, txn, true, 'p.example')
   const back = new URL(await o.callback({ code: 'c', state: txn, server_domain: 'oauth.bitrix.info' }, txn))
   return { clientId: c.client_id as string, verifier, code: back.searchParams.get('code')!, txn, back }
 }
@@ -85,7 +85,38 @@ describe('OAuthServer: защитные проверки', () => {
     const s = setup('1', 7)
     const c = await codeFor(s.oauth)
     expect(c.back.searchParams.get('error')).toBe('access_denied')
-    expect(await s.b24.hasTokens(7)).toBe(false)
+    expect(await s.b24.hasTokens({ memberId: 'm0123456789', host: 'p.example', userId: 7 })).toBe(false)
+  })
+
+  it('портал — из ответа OAuth-сервера: сотрудник 7 другого портала не проходит по «p.example:7»', async () => {
+    const s = setup('p.example:7', 7, 'https://other.bitrix24.by/rest/')
+    const c = await codeFor(s.oauth)
+    expect(c.back.searchParams.get('error')).toBe('access_denied')
+    const ok = await codeFor(setup('p.example:7', 7).oauth)
+    expect(ok.back.searchParams.get('code')).toBeTruthy()
+  })
+
+  it('адрес портала на экране согласия: мусор — отказ, ввод в любом виде → вход на этот портал', async () => {
+    const { oauth } = setup()
+    const c = await oauth.register({ redirect_uris: [RU] }) as any
+    const start = async () => (await oauth.authorize({ client_id: c.client_id, redirect_uri: RU, response_type: 'code', code_challenge: pkce().challenge, code_challenge_method: 'S256' })).txn
+    for (const bad of ['', 'localhost', 'a b.by', 'https://u:p@x.bitrix24.by', 'x.bitrix24.by:8080', 'javascript:alert(1)']) {
+      const txn = await start()
+      await expect(oauth.consent(txn, txn, true, bad)).rejects.toMatchObject({ error: 'invalid_request' })
+    }
+    const txn = await start()
+    const u = new URL(await oauth.consent(txn, txn, true, ' https://MyCo.Bitrix24.by/crm/deal/ '))
+    expect(u.origin + u.pathname).toBe('https://myco.bitrix24.by/oauth/authorize/')
+    expect(u.searchParams.get('state')).toBe(txn)
+  })
+
+  it('client_endpoint не https или без member_id — вход не состоялся', async () => {
+    for (const endpoint of ['http://evil.example/rest/', 'notaurl']) {
+      const s = setup('*', 7, endpoint)
+      const c = await codeFor(s.oauth)
+      expect(c.back.searchParams.get('error')).toBe('server_error')
+      expect(s.calls.some(u => u.host === 'evil.example')).toBe(false)
+    }
   })
 
   it('возврат с портала одноразовый', async () => {
@@ -99,7 +130,7 @@ describe('OAuthServer: защитные проверки', () => {
     const reg = await s.oauth.register({ redirect_uris: [RU] }) as any
     const { challenge } = pkce()
     const { txn } = await s.oauth.authorize({ client_id: reg.client_id, redirect_uri: RU, response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256' })
-    await s.oauth.consent(txn, txn, true)
+    await s.oauth.consent(txn, txn, true, 'p.example')
     const back = new URL(await s.oauth.callback({ code: 'c', state: txn, server_domain: 'evil.example' }, txn))
     expect(back.searchParams.get('error')).toBe('server_error')
     expect(s.calls.some(u => u.host === 'evil.example')).toBe(false)
@@ -134,8 +165,9 @@ describe('OAuthServer: защитные проверки', () => {
 describe('B24', () => {
   it('refresh хранится зашифрованным', async () => {
     const s = setup()
-    await s.b24.login('c')
-    const t = await s.store.get<B24Tokens>('b24:tokens:7')
+    const w = await s.b24.login('c')
+    expect(w).toMatchObject({ memberId: 'm0123456789', host: 'p.example', userId: 7 })
+    const t = await s.store.get<B24Tokens>('b24:tokens:m0123456789:7')
     expect(t!.refreshEnc).not.toContain('rt1')
   })
 
@@ -145,16 +177,16 @@ describe('B24', () => {
     const store = new Store(createStorage(), () => now)
     const ff = fakeFetch(7, 3600)
     const b24 = new B24(cfg, store, ff.f, () => now, fetchTransport(cfg, ff.f))
-    await b24.login('c')
-    expect((await b24.call(7, 'crm.deal.get')).result.auth).toBe('at1')
+    const w = await b24.login('c')
+    expect((await b24.call(w, 'crm.deal.get')).result.auth).toBe('at1')
     now += (3600 - 30) * 1000
-    expect((await b24.call(7, 'crm.deal.get')).result.auth).toBe('at2')
+    expect((await b24.call(w, 'crm.deal.get')).result.auth).toBe('at2')
     expect(ff.calls.filter(u => u.searchParams.get('grant_type') === 'refresh_token')).toHaveLength(1)
   })
 
   it('имя метода REST — только буквы, цифры, точка, подчёркивание', async () => {
     const s = setup()
-    await s.b24.login('c')
-    await expect(s.b24.call(7, '../oauth/token')).rejects.toMatchObject({ code: 'bad_method' })
+    const w = await s.b24.login('c')
+    await expect(s.b24.call(w, '../oauth/token')).rejects.toMatchObject({ code: 'bad_method' })
   })
 })

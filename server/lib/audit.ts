@@ -3,6 +3,8 @@
 // Строка JSON в stdout, хранит docker (docker-compose.yml, logging); смотреть — make audit.
 
 export interface AuditEntry {
+  /** Хост портала: сервер работает с любым Битрикс24, ID сотрудника без портала неоднозначен. */
+  portal: string
   user: number
   tool: string
   method?: string

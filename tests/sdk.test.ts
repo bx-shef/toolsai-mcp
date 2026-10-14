@@ -16,10 +16,10 @@ beforeAll(() => new Promise<void>(r => server.listen(0, '127.0.0.1', () => { url
 afterAll(() => { server.close() })
 
 const transport = () => sdkTransport(loadConfig({
-  PUBLIC_URL: 'https://mcp.example.by', B24_PORTAL_URL: url, B24_OAUTH_SERVERS: url,
+  PUBLIC_URL: 'https://mcp.example.by', B24_OAUTH_SERVERS: url,
   B24_CLIENT_ID: 'a', B24_CLIENT_SECRET: 'b', ENCRYPTION_KEY: Buffer.alloc(32).toString('base64'), ALLOWED_USERS: '*',
 } as never))
-const ctx = { access: 'at', refresh: async () => 'at2' }
+const ctx = { get endpoint() { return `${url}/rest/` }, access: 'at', refresh: async () => 'at2' }
 
 describe('sdkTransport', () => {
   it('пустой код портала с «Not found» — NOT_FOUND, а не ERR_BAD_REQUEST', async () => {

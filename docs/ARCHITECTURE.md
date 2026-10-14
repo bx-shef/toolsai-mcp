@@ -1,12 +1,33 @@
 # Устройство
 
-> Last reviewed: 2026-10-13
+> Last reviewed: 2026-10-14
 
 ## Что и зачем
 
-Сотрудник подключает в Claude (или другом MCP-клиенте) коннектор `https://<портал>/mcp-ai/mcp`,
-входит своим логином портала — и ИИ видит в CRM и задачах ровно то, что видит этот сотрудник.
+Сотрудник подключает в Claude (или другом MCP-клиенте) коннектор, например
+`https://<портал>/mcp-ai/mcp`, называет свой Битрикс24 (облако или коробка — любой домен), входит
+своим логином — и ИИ видит в CRM и задачах ровно то, что видит этот сотрудник.
 Ни общего токена, ни вебхука: каждый вызов REST идёт его OAuth-токеном.
+
+## Любой Битрикс24
+
+Адрес портала в настройках сервера не нужен. Порядок — штатный «полный протокол OAuth 2.0»
+Битрикс24 ([документация](https://apidocs.bitrix24.ru/api-reference/oauth/index.html)):
+
+1. На экране согласия сотрудник вводит адрес портала (`mycompany.bitrix24.by`, `b24.firma.by`;
+   браузер запоминает его в cookie `mcp_portal` — только подсказка поля).
+2. Браузер уходит на `https://<портал>/oauth/authorize/`. Сам сервер на введённый адрес **не
+   ходит** — поэтому произвольный ввод не даёт запросов во внутреннюю сеть.
+3. Код меняется на токены у OAuth-сервера из `B24_OAUTH_SERVERS`. Его ответ содержит
+   `client_endpoint` (REST портала) и `member_id` (постоянный ID портала) — **им и верим**, а не
+   параметрам `domain` и `member_id` в возврате: те браузер может подменить.
+4. Токены хранятся по паре «портал (`member_id`) + сотрудник»: сотрудник 7 одного портала и
+   сотрудник 7 другого — разные люди.
+5. `ALLOWED_USERS` проверяет хост из `client_endpoint`: `портал`, `портал:ID` или `*`.
+
+Чтобы вход работал на многих порталах, `B24_CLIENT_ID` — приложение из партнёрского кабинета
+(его `client_id` действует везде, где оно установлено). Локальное приложение работает только на
+своём портале — для одного портала этого достаточно.
 
 ## Вход
 
@@ -26,11 +47,11 @@ sequenceDiagram
   C->>M: /.well-known/… , POST /oauth/register
   C->>M: GET /oauth/authorize (PKCE S256, state)
   M-->>C: экран согласия + cookie mcp_login=<вход>
-  C->>M: POST /oauth/consent «Разрешить» (txn = cookie)
-  M-->>C: 303 → портал /oauth/authorize/?client_id&state=<вход>
+  C->>M: POST /oauth/consent «Разрешить», адрес портала (txn = cookie)
+  M-->>C: 303 → https://<портал>/oauth/authorize/?client_id&state=<вход>
   C->>P: сотрудник входит (или уже вошёл)
   P-->>M: GET /oauth/callback?code&state&server_domain (state = cookie)
-  M->>O: code + client_secret → токены сотрудника
+  M->>O: code + client_secret → токены, client_endpoint, member_id
   M->>P: user.current — кто вошёл
   M-->>C: 302 → redirect_uri?code=<наш код>&state
   C->>M: POST /oauth/token (code_verifier)
@@ -45,7 +66,7 @@ sequenceDiagram
 | Вход в процессе (`state` для портала) | Redis `login:<случайное>` + cookie браузера | 10 мин, одноразово |
 | Наш код авторизации | Redis `code:<sha256>` | 2 мин, одноразово, сгорает и при ошибке |
 | Наш access / refresh | Redis `at:` / `rt:<sha256>` — храним хэш, не сам токен | `ACCESS_TTL_SEC` / `REFRESH_TTL_SEC` |
-| Токены Битрикс24 сотрудника | Redis `b24:tokens:<userId>`, refresh зашифрован AES-256-GCM | до `REFRESH_TTL_SEC` |
+| Токены Битрикс24 сотрудника | Redis `b24:tokens:<member_id>:<userId>` (+ адрес REST портала), refresh зашифрован AES-256-GCM | до `REFRESH_TTL_SEC` |
 
 - Токены Битрикс24 клиенту **не отдаются никогда**.
 - Refresh Битрикс24 одноразовый — обновляем под блокировкой на сотрудника (`server/lib/lock.ts`);

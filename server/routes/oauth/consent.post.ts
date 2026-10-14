@@ -4,7 +4,9 @@ import { LOGIN_COOKIE } from '../../lib/oauth'
 export default defineEventHandler(async (event) => {
   try {
     const body = await readParams(event)
-    const url = await useServices().oauth.consent(body.txn, getCookie(event, LOGIN_COOKIE), body.decision === 'allow')
+    const url = await useServices().oauth.consent(body.txn, getCookie(event, LOGIN_COOKIE), body.decision === 'allow', body.portal)
+    // Запомнить портал на этом браузере — в следующий раз поле уже заполнено.
+    if (body.decision === 'allow' && typeof body.portal === 'string') setPortalCookie(event, body.portal)
     return sendRedirect(event, url, 303)
   }
   catch (e) {

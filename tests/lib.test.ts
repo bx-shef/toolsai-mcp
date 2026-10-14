@@ -18,9 +18,19 @@ describe('config', () => {
   it('убирает хвостовой слэш, разбирает ALLOWED_USERS', () => {
     const c = loadConfig({ ...env, ALLOWED_USERS: '1, 15' })
     expect(c.publicUrl).toBe('https://b24.example/mcp-ai')
-    expect(c.isAllowed(15)).toBe(true)
-    expect(c.isAllowed(2)).toBe(false)
-    expect(loadConfig({ ...env, ALLOWED_USERS: '*' }).isAllowed(999)).toBe(true)
+    expect(c.isAllowed('b24.example', 15)).toBe(true)
+    expect(c.isAllowed('b24.example', 2)).toBe(false)
+    expect(c.isAllowed('other.bitrix24.by', 15)).toBe(false)
+    expect(loadConfig({ ...env, ALLOWED_USERS: '*' }).isAllowed('any.bitrix24.by', 999)).toBe(true)
+  })
+  it('ALLOWED_USERS по порталам: портал целиком и портал:ID, без портала по умолчанию', () => {
+    const { B24_PORTAL_URL: _, ...noPortal } = env
+    const c = loadConfig({ ...noPortal, ALLOWED_USERS: 'a.bitrix24.by, https://B.bitrix24.ru:7' })
+    expect(c.defaultPortal).toBeUndefined()
+    expect(c.isAllowed('a.bitrix24.by', 123)).toBe(true)
+    expect(c.isAllowed('b.bitrix24.ru', 7)).toBe(true)
+    expect(c.isAllowed('b.bitrix24.ru', 8)).toBe(false)
+    expect(() => loadConfig({ ...noPortal, ALLOWED_USERS: '7' })).toThrow(/B24_PORTAL_URL/)
   })
   it('пустой ALLOWED_USERS — отказ запуска (закрыто по умолчанию)', () => {
     expect(() => loadConfig({ ...env, ALLOWED_USERS: '' })).toThrow(/ALLOWED_USERS/)

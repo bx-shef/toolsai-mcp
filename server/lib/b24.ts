@@ -16,7 +16,12 @@ export interface B24Tokens {
   expiresAt: number
   /** OAuth-сервер, выдавший токены, — refresh идёт туда же. */
   server: string
+  /** REST портала из ответа OAuth-сервера (client_endpoint), со слэшем на конце. */
+  endpoint: string
 }
+
+/** Кто вызывает: сотрудник конкретного портала. member_id — постоянный ID портала, host — для списка доступа. */
+export interface Who { memberId: string, host: string, userId: number }
 
 export class B24Error extends Error {
   constructor(readonly code: string, message: string, readonly status = 0) {
@@ -36,7 +41,7 @@ export interface RestResult { result: any, next?: number, total?: number }
  * в тестах — fetch, чтобы подставлять ответы без сети.
  */
 export type RestTransport = (
-  ctx: { access: string, refresh: () => Promise<string> },
+  ctx: { endpoint: string, access: string, refresh: () => Promise<string> },
   method: string,
   params: Record<string, unknown>,
 ) => Promise<RestResult>
@@ -45,7 +50,7 @@ export type RestTransport = (
 export const PAGE_SIZE = 50
 
 const AUTH_ERRORS = new Set(['invalid_token', 'NO_AUTH_FOUND', 'invalid_grant', 'expired_token'])
-const tokenKey = (userId: number) => `b24:tokens:${userId}`
+const tokenKey = (w: Pick<Who, 'memberId' | 'userId'>) => `b24:tokens:${w.memberId}:${w.userId}`
 
 export class B24 {
   constructor(
@@ -56,9 +61,12 @@ export class B24 {
     private transport: RestTransport = sdkTransport(cfg),
   ) {}
 
-  /** Страница входа портала; вернёт на путь обработчика локального приложения. */
-  authorizeUrl(state: string): string {
-    const u = new URL(`${this.cfg.portalUrl}/oauth/authorize/`)
+  /**
+   * Страница входа портала, адрес которого назвал человек. Сервер туда сам не ходит — только браузер,
+   * поэтому любой домен безопасен: REST пойдёт на адрес, который вернёт OAuth-сервер Битрикс24.
+   */
+  authorizeUrl(portal: string, state: string): string {
+    const u = new URL(`https://${portal}/oauth/authorize/`)
     u.searchParams.set('client_id', this.cfg.b24ClientId)
     u.searchParams.set('state', state)
     return u.toString()
@@ -87,67 +95,91 @@ export class B24 {
     return body
   }
 
-  private async save(userId: number, body: Record<string, any>, server: string): Promise<B24Tokens> {
+  private async save(w: Who, body: Record<string, any>, server: string, endpoint: string): Promise<B24Tokens> {
     const t: B24Tokens = {
       access: body.access_token,
       refreshEnc: encrypt(this.cfg.encryptionKey, body.refresh_token),
       expiresAt: this.now() + Number(body.expires_in || 3600) * 1000,
       server,
+      endpoint,
     }
-    await this.store.put(tokenKey(userId), t, this.cfg.refreshTtlSec)
+    await this.store.put(tokenKey(w), t, this.cfg.refreshTtlSec)
     return t
   }
 
-  /** Обменять код с портала на токены и узнать, кто вошёл. */
-  async login(code: string, serverDomain?: string): Promise<{ userId: number, name: string }> {
+  /**
+   * Обменять код с портала на токены и узнать, кто вошёл и с какого портала. Адрес REST и member_id
+   * берём из ответа OAuth-сервера (он из B24_OAUTH_SERVERS), а не из параметров возврата — их браузер
+   * мог подменить.
+   */
+  async login(code: string, serverDomain?: string): Promise<Who & { name: string }> {
     const server = this.pickServer(serverDomain)
     const body = await this.tokenRequest(server, { grant_type: 'authorization_code', code })
+    const endpoint = restEndpoint(body.client_endpoint)
+    const memberId = String(body.member_id ?? '')
+    if (!endpoint || !/^[a-z0-9]{8,64}$/i.test(memberId)) throw new B24Error('bad_token_response', 'OAuth-сервер не вернул client_endpoint или member_id')
     const { result: me } = await this.transport(
-      { access: body.access_token, refresh: async () => { throw new ReloginRequired('expired_token', 'Токен истёк сразу после входа') } },
+      { endpoint, access: body.access_token, refresh: async () => { throw new ReloginRequired('expired_token', 'Токен истёк сразу после входа') } },
       'user.current', {},
     )
     const userId = Number(me.ID)
     if (!Number.isInteger(userId) || userId <= 0) throw new B24Error('bad_user', 'user.current не вернул ID')
-    await withLock(tokenKey(userId), () => this.save(userId, body, server))
-    return { userId, name: [me.NAME, me.LAST_NAME].filter(Boolean).join(' ') }
+    const who: Who = { memberId, host: new URL(endpoint).hostname, userId }
+    await withLock(tokenKey(who), () => this.save(who, body, server, endpoint))
+    return { ...who, name: [me.NAME, me.LAST_NAME].filter(Boolean).join(' ') }
   }
 
-  async hasTokens(userId: number): Promise<boolean> {
-    return (await this.store.get(tokenKey(userId))) !== null
+  async hasTokens(w: Who): Promise<boolean> {
+    return (await this.store.get(tokenKey(w))) !== null
   }
 
-  async forget(userId: number) {
-    await this.store.del(tokenKey(userId))
+  async forget(w: Who) {
+    await this.store.del(tokenKey(w))
   }
 
   /** Действующий access; refresh в Битрикс24 одноразовый — поэтому под блокировкой на сотрудника. */
   /** staleAccess — токен, который портал отверг: обновляем, только если в хранилище всё ещё он. */
-  private token(userId: number, staleAccess?: string): Promise<string> {
-    return withLock(tokenKey(userId), async () => {
-      const t = await this.store.get<B24Tokens>(tokenKey(userId))
+  private token(w: Who, staleAccess?: string): Promise<B24Tokens> {
+    return withLock(tokenKey(w), async () => {
+      const t = await this.store.get<B24Tokens>(tokenKey(w))
       if (!t) throw new ReloginRequired('no_tokens', 'Нет входа в Битрикс24 — подключитесь заново')
-      if (staleAccess === undefined ? t.expiresAt - this.now() > 60_000 : t.access !== staleAccess) return t.access
+      if (staleAccess === undefined ? t.expiresAt - this.now() > 60_000 : t.access !== staleAccess) return t
       const refresh = decrypt(this.cfg.encryptionKey, t.refreshEnc)
       try {
         const body = await this.tokenRequest(t.server, { grant_type: 'refresh_token', refresh_token: refresh })
-        return (await this.save(userId, body, t.server)).access
+        // Адрес REST оставляем прежним: refresh не меняет портал.
+        return await this.save(w, body, t.server, t.endpoint)
       }
       catch (e) {
         // Мёртвый refresh не держим: иначе каждый вызов снова бился бы в OAuth-сервер,
         // а наш токен клиента оставался бы «живым» (OAuthServer.verify смотрит на наличие токенов).
-        if (e instanceof ReloginRequired) await this.store.del(tokenKey(userId))
+        if (e instanceof ReloginRequired) await this.store.del(tokenKey(w))
         throw e
       }
     })
   }
 
   /** REST от имени сотрудника — действуют его права в Битрикс24. Истёкший токен транспорт обновляет сам, один раз. */
-  async call(userId: number, method: string, params: Record<string, unknown> = {}): Promise<RestResult> {
+  async call(w: Who, method: string, params: Record<string, unknown> = {}): Promise<RestResult> {
     if (!/^[a-z0-9_.]+$/i.test(method)) throw new B24Error('bad_method', `Недопустимое имя метода: ${method}`)
-    const access = await this.token(userId)
+    const { access, endpoint } = await this.token(w)
     // Обновляем, только если в хранилище всё тот же отвергнутый токен: соседний вызов мог уже
     // получить свежий, а refresh у Битрикс24 одноразовый — лишнее обновление его сжигает.
-    return this.transport({ access, refresh: () => this.token(userId, access) }, method, params)
+    return this.transport({ endpoint, access, refresh: async () => (await this.token(w, access)).access }, method, params)
+  }
+}
+
+/** client_endpoint из ответа OAuth-сервера → «https://портал/rest/». Только https (http — лишь локально, для тестов). */
+export function restEndpoint(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  try {
+    const u = new URL(value)
+    const local = u.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(u.hostname)
+    if ((u.protocol !== 'https:' && !local) || u.username || u.password || u.search || u.hash) return null
+    return `${u.origin}${u.pathname.replace(/\/*$/, '/')}`
+  }
+  catch {
+    return null
   }
 }
 
@@ -167,8 +199,8 @@ function restError(code: string, description: string, status = 0): B24Error {
  * (общего лимита на сотрудника нет — issue #2), зато нет кеша токенов, который разошёлся бы с Redis.
  */
 export function sdkTransport(cfg: Config): RestTransport {
-  const portal = new URL(cfg.portalUrl)
   return async (ctx, method, params) => {
+    const portal = new URL(ctx.endpoint)
     const b24 = new B24OAuth({
       accessToken: ctx.access,
       refreshToken: '',
@@ -177,7 +209,7 @@ export function sdkTransport(cfg: Config): RestTransport {
       expiresIn: 3600,
       scope: '',
       domain: portal.host,
-      clientEndpoint: `${cfg.portalUrl}/rest/`,
+      clientEndpoint: ctx.endpoint,
       serverEndpoint: `${cfg.b24OAuthServers[0]}/rest/`,
       status: 'L',
       issuer: 'request',
@@ -220,9 +252,9 @@ export function sdkTransport(cfg: Config): RestTransport {
 }
 
 /** Транспорт на fetch — для тестов: те же правила, без SDK и без сети. */
-export function fetchTransport(cfg: Config, fetchFn: Fetch): RestTransport {
-  const once = async (access: string, method: string, params: Record<string, unknown>) => {
-    const res = await fetchFn(`${cfg.portalUrl}/rest/${method}.json`, {
+export function fetchTransport(_cfg: Config, fetchFn: Fetch): RestTransport {
+  const once = async (endpoint: string, access: string, method: string, params: Record<string, unknown>) => {
+    const res = await fetchFn(`${endpoint}${method}.json`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...params, auth: access }),
@@ -233,11 +265,11 @@ export function fetchTransport(cfg: Config, fetchFn: Fetch): RestTransport {
   }
   return async (ctx, method, params) => {
     try {
-      return await once(ctx.access, method, params)
+      return await once(ctx.endpoint, ctx.access, method, params)
     }
     catch (e) {
       if (!(e instanceof ReloginRequired) || e.code !== 'expired_token') throw e
-      return once(await ctx.refresh(), method, params)
+      return once(ctx.endpoint, await ctx.refresh(), method, params)
     }
   }
 }
