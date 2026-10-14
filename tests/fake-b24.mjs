@@ -29,7 +29,7 @@ export function startFakeB24() {
       }
       const at = `at${++n}`, rt = `rt${n}`
       tokens.set(at, uid); refresh.set(rt, uid)
-      return json(200, { access_token: at, refresh_token: rt, expires_in: 3600 })
+      return json(200, { access_token: at, refresh_token: rt, expires_in: 3600, client_endpoint: `http://localhost:${server.address().port}/rest/`, member_id: 'fake0member1' })
     }
     if (url.pathname.startsWith('/rest/')) {
       const p = JSON.parse(body || '{}')

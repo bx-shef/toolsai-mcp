@@ -21,7 +21,6 @@ function start(extraEnv: Record<string, string> = {}) {
       PORT: String(PORT),
       HOST: '127.0.0.1',
       PUBLIC_URL: BASE,
-      B24_PORTAL_URL: fake.url,
       B24_OAUTH_SERVERS: fake.url,
       B24_CLIENT_ID: 'local.test',
       B24_CLIENT_SECRET: 'sec',
@@ -78,7 +77,7 @@ async function consent(txn: string, cookie: string | null, decision = 'allow') {
   return fetch(`${BASE}/oauth/consent`, {
     method: 'POST', redirect: 'manual',
     headers: { 'content-type': 'application/x-www-form-urlencoded', ...(cookie ? { cookie } : {}) },
-    body: new URLSearchParams({ txn, decision }),
+    body: new URLSearchParams({ txn, decision, portal: 'test.bitrix24.by' }),
   })
 }
 
@@ -97,7 +96,7 @@ async function login(redirect = REDIRECT, code?: string) {
   const r1 = await consent(txn, cookie)
   expect(r1.status).toBe(303)
   const portal = new URL(r1.headers.get('location')!)
-  expect(portal.origin + portal.pathname).toBe(`${fake.url}/oauth/authorize/`)
+  expect(portal.origin + portal.pathname).toBe('https://test.bitrix24.by/oauth/authorize/')
   expect(portal.searchParams.get('client_id')).toBe('local.test')
   // портал впускает сотрудника и возвращает на наш callback — в том же браузере, с cookie
   const r2 = await portalReturn(portal.searchParams.get('state')!, cookie, code)
@@ -178,7 +177,7 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     const rest = fake.calls.filter((c: any) => /^\/rest\/crm\.deal\.get(\.json)?$/.test(c.path)).at(-1)
     expect(rest.body.auth).toMatch(/^at\d+$/)
     // журнал: имена аргументов, без значений
-    expect(logs).toMatch(/"kind":"audit","user":7,"tool":"crm_deal_get","method":"crm.deal.get","args":\["id"\],"ok":true/)
+    expect(logs).toMatch(/"kind":"audit","portal":"localhost","member":"fake0member1","user":7,"tool":"crm_deal_get","method":"crm.deal.get","args":\["id"\],"ok":true/)
   })
 
   it('код одноразовый, PKCE и redirect_uri проверяются', async () => {
@@ -305,7 +304,7 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
   it('ALLOWED_USERS: сотрудник не в списке — access_denied клиенту', async () => {
     app.kill()
     await new Promise(r => setTimeout(r, 300))
-    start({ ALLOWED_USERS: '1' })
+    start({ ALLOWED_USERS: 'other.bitrix24.by' })
     await waitUp()
     const { back } = await login()
     expect(back.searchParams.get('error')).toBe('access_denied')

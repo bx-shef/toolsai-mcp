@@ -1,5 +1,5 @@
-import type { B24 } from './b24'
-import type { Config } from './config'
+import type { B24, Who } from './b24'
+import { portalHost, type Config } from './config'
 import { randomToken, sha256, verifyPkce } from './crypto'
 import type { Store } from './store'
 
@@ -15,8 +15,8 @@ export class OAuthError extends Error {
 
 export interface Client { id: string, name: string, redirectUris: string[] }
 interface Pending { clientId: string, clientName: string, redirectUri: string, challenge: string, state?: string, approved: boolean }
-interface Grant { clientId: string, redirectUri: string, challenge: string, userId: number }
-export interface Session { userId: number, clientId: string }
+interface Grant extends Who { clientId: string, redirectUri: string, challenge: string }
+export interface Session extends Who { clientId: string }
 
 const CODE_TTL = 120
 const LOGIN_TTL = 600
@@ -123,7 +123,7 @@ export class OAuthServer {
    * Защита от подмены входа: txn в форме должен совпасть с cookie браузера, начавшего вход.
    * Иначе чужой клиент мог бы прислать сотруднику ссылку на портал и получить код с его правами.
    */
-  async consent(txn: unknown, cookie: string | undefined, allow: boolean): Promise<string> {
+  async consent(txn: unknown, cookie: string | undefined, allow: boolean, portalInput?: unknown): Promise<string> {
     if (typeof txn !== 'string' || !cookie || txn !== cookie) throw new OAuthError('access_denied', 'Вход начат в другом браузере — начните подключение заново', 403)
     const pending = await this.store.get<Pending>(`login:${txn}`)
     if (!pending) throw new OAuthError('invalid_request', 'Вход устарел — начните подключение заново')
@@ -131,8 +131,10 @@ export class OAuthServer {
       await this.store.del(`login:${txn}`)
       return this.back(pending, { error: 'access_denied', error_description: 'Сотрудник отказал' })
     }
+    const portal = typeof portalInput === 'string' ? portalHost(portalInput) : null
+    if (!portal) throw new OAuthError('invalid_request', 'Не похоже на адрес Битрикс24 — вернитесь и введите, например, mycompany.bitrix24.by')
     await this.store.put(`login:${txn}`, { ...pending, approved: true }, LOGIN_TTL)
-    return this.b24.authorizeUrl(txn)
+    return this.b24.authorizeUrl(portal, txn)
   }
 
   private back(p: Pending, params: Record<string, string>): string {
@@ -155,28 +157,29 @@ export class OAuthServer {
     if (typeof q.code !== 'string' || !q.code) {
       return this.back(pending, { error: 'access_denied', error_description: 'Битрикс24 не вернул код' })
     }
-    let userId: number
+    let who: Who
     try {
-      ({ userId } = await this.b24.login(q.code, typeof q.server_domain === 'string' ? q.server_domain : undefined))
+      const { name: _name, ...w } = await this.b24.login(q.code, typeof q.server_domain === 'string' ? q.server_domain : undefined)
+      who = w
     }
     catch (e) {
       console.error('[oauth] вход через Битрикс24:', e instanceof Error ? e.message : e)
       return this.back(pending, { error: 'server_error', error_description: 'Битрикс24 не выдал токены — попробуйте ещё раз' })
     }
-    if (!this.cfg.isAllowed(userId)) {
-      await this.b24.forget(userId)
+    if (!this.cfg.isAllowed(who)) {
+      await this.b24.forget(who)
       return this.back(pending, { error: 'access_denied', error_description: 'Доступ к MCP для этого сотрудника не открыт' })
     }
     const code = randomToken()
-    const grant: Grant = { clientId: pending.clientId, redirectUri: pending.redirectUri, challenge: pending.challenge, userId }
+    const grant: Grant = { clientId: pending.clientId, redirectUri: pending.redirectUri, challenge: pending.challenge, ...who }
     await this.store.put(`code:${sha256(code)}`, grant, CODE_TTL)
     return this.back(pending, { code })
   }
 
-  private async issue(userId: number, clientId: string) {
+  private async issue(w: Who, clientId: string) {
     const access = randomToken()
     const refresh = randomToken()
-    const s: Session = { userId, clientId }
+    const s: Session = { memberId: w.memberId, host: w.host, userId: w.userId, clientId }
     await this.store.put(`at:${sha256(access)}`, s, this.cfg.accessTtlSec)
     await this.store.put(`rt:${sha256(refresh)}`, s, this.cfg.refreshTtlSec)
     return { access_token: access, token_type: 'Bearer', expires_in: this.cfg.accessTtlSec, refresh_token: refresh }
@@ -190,15 +193,15 @@ export class OAuthServer {
       if (!grant) throw new OAuthError('invalid_grant', 'Код неверный или устарел')
       if (grant.clientId !== clientId || grant.redirectUri !== body.redirect_uri) throw new OAuthError('invalid_grant', 'Код выдан другому клиенту')
       if (typeof body.code_verifier !== 'string' || !verifyPkce(body.code_verifier, grant.challenge)) throw new OAuthError('invalid_grant', 'PKCE не сошёлся')
-      return this.issue(grant.userId, grant.clientId)
+      return this.issue(grant, grant.clientId)
     }
     if (body.grant_type === 'refresh_token') {
       const s = typeof body.refresh_token === 'string' ? await this.store.take<Session>(`rt:${sha256(body.refresh_token)}`) : null
       if (!s || s.clientId !== clientId) throw new OAuthError('invalid_grant', 'refresh_token неверный или устарел')
-      if (!this.cfg.isAllowed(s.userId)) throw new OAuthError('invalid_grant', 'Доступ закрыт')
+      if (!this.cfg.isAllowed(s)) throw new OAuthError('invalid_grant', 'Доступ закрыт')
       // Токенов Битрикс24 нет (отказ портала, истекли) — refresh бесполезен: клиент должен войти заново.
-      if (!await this.b24.hasTokens(s.userId)) throw new OAuthError('invalid_grant', 'Нужен новый вход через Битрикс24')
-      return this.issue(s.userId, s.clientId)
+      if (!await this.b24.hasTokens(s)) throw new OAuthError('invalid_grant', 'Нужен новый вход через Битрикс24')
+      return this.issue(s, s.clientId)
     }
     throw new OAuthError('unsupported_grant_type', 'Только authorization_code и refresh_token')
   }
@@ -209,9 +212,9 @@ export class OAuthServer {
     if (!m?.[1]) return null
     const s = await this.store.get<Session>(`at:${sha256(m[1])}`)
     if (!s) return null
-    if (!this.cfg.isAllowed(s.userId)) return null
+    if (!this.cfg.isAllowed(s)) return null
     // Портал отозвал вход сотрудника — наш токен тоже не годится: 401 запустит новый вход у клиента.
-    if (!await this.b24.hasTokens(s.userId)) return null
+    if (!await this.b24.hasTokens(s)) return null
     return s
   }
 }

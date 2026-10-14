@@ -44,7 +44,7 @@ const proxy = createServer(async (req, res) => {
   if (url.pathname === '/oauth/token/') {
     const at = `at${++n}`; tokens.add(at)
     portalCalls.push({ kind: 'oauth', grant: url.searchParams.get('grant_type') })
-    return send(200, { access_token: at, refresh_token: `rt${n}`, expires_in: 3600, member_id: 'smoke', user_id: 1 })
+    return send(200, { access_token: at, refresh_token: `rt${n}`, expires_in: 3600, member_id: 'smoke0member', client_endpoint: `${FAKE}/rest/` })
   }
   if (url.pathname.startsWith('/rest/')) {
     const ct = req.headers['content-type'] || ''
@@ -77,7 +77,7 @@ let company, contact, lead, deal, task, activity
 let srvLog = ''
 const app = spawn(process.execPath, ['.output/server/index.mjs'], { env: {
   PATH: process.env.PATH, PORT: String(PORT), HOST: '127.0.0.1', PUBLIC_URL: BASE,
-  B24_PORTAL_URL: FAKE, B24_OAUTH_SERVERS: FAKE, B24_CLIENT_ID: 'local.smoke', B24_CLIENT_SECRET: 'sec',
+  B24_OAUTH_SERVERS: FAKE, B24_CLIENT_ID: 'local.smoke', B24_CLIENT_SECRET: 'sec',
   ENCRYPTION_KEY: randomBytes(32).toString('base64'), ALLOWED_USERS: '*',
 } })
 app.stdout.on('data', d => { srvLog += d }); app.stderr.on('data', d => { srvLog += d })
@@ -99,7 +99,7 @@ try {
   const r0 = await fetch(au, { redirect: 'manual' })
   const cookie = r0.headers.get('set-cookie').split(';')[0]
   const txn = /name="txn" value="([^"]+)"/.exec(await r0.text())[1]
-  const r1 = await fetch(`${BASE}/oauth/consent`, { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/x-www-form-urlencoded', cookie }, body: new URLSearchParams({ txn, decision: 'allow' }) })
+  const r1 = await fetch(`${BASE}/oauth/consent`, { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/x-www-form-urlencoded', cookie }, body: new URLSearchParams({ txn, decision: 'allow', portal: new URL(HOOK).host }) })
   const st = new URL(r1.headers.get('location')).searchParams.get('state')
   const cb = new URL(`${BASE}/oauth/callback`); cb.searchParams.set('code', 'b24code-x'); cb.searchParams.set('state', st); cb.searchParams.set('server_domain', new URL(FAKE).host)
   const r2 = await fetch(cb, { redirect: 'manual', headers: { cookie } })

@@ -4,16 +4,21 @@
 export interface Config {
   /** Адрес сервера, как его видят клиенты, без слэша на конце. */
   publicUrl: string
-  /** Адрес портала, например https://b24.stuttgart.by */
-  portalUrl: string
+  /**
+   * Портал по умолчанию (необязателен): подставляется в поле входа, к нему относятся голые ID
+   * в ALLOWED_USERS. Сервер работает с любым Битрикс24, где установлено приложение.
+   */
+  defaultPortal?: string
   b24ClientId: string
   b24ClientSecret: string
   /** OAuth-серверы Битрикс24, которым верим; первый — по умолчанию. */
   b24OAuthServers: string[]
   /** Ключ 32 байта для токенов Битрикс24 в Redis. */
   encryptionKey: Buffer
-  /** Открыт ли вход сотруднику: ALLOWED_USERS — список ID или «*» (все сотрудники портала). */
-  isAllowed: (userId: number) => boolean
+  /** Открыт ли вход сотруднику портала: ALLOWED_USERS — см. parseAllowed. */
+  isAllowed: (who: { host: string, memberId: string, userId: number }) => boolean
+  /** Разрешить REST на localhost/127.0.0.1 — только когда сам сервер локальный (тесты, разработка). */
+  allowLocalPortal: boolean
   accessTtlSec: number
   refreshTtlSec: number
 }
@@ -39,18 +44,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const servers = (env.B24_OAUTH_SERVERS || 'https://oauth.bitrix.info,https://oauth.bitrix24.tech')
     .split(',').map(s => s.trim()).filter(Boolean).map(s => url('B24_OAUTH_SERVERS', s))
 
-  // Закрыто по умолчанию: пустой список — ошибка запуска, «все» надо сказать явно.
-  const rawAllowed = required('ALLOWED_USERS')
-  const allowed = new Set<number>()
-  if (rawAllowed !== '*') {
-    for (const part of rawAllowed.split(',')) {
-      const t = part.trim()
-      if (!t) continue
-      if (!/^\d+$/.test(t)) throw new Error('ALLOWED_USERS: comma-separated Bitrix24 user IDs or *')
-      allowed.add(Number(t))
-    }
-    if (!allowed.size) throw new Error('ALLOWED_USERS: comma-separated Bitrix24 user IDs or *')
-  }
+  const defaultPortal = env.B24_PORTAL_URL?.trim() ? portalHost(env.B24_PORTAL_URL) ?? undefined : undefined
+  if (env.B24_PORTAL_URL?.trim() && !defaultPortal) throw new Error('B24_PORTAL_URL: portal address like https://mycompany.bitrix24.by')
+  const isAllowed = parseAllowed(required('ALLOWED_USERS'), defaultPortal)
 
   const ttl = (name: string, def: number) => {
     const v = env[name]?.trim()
@@ -61,13 +57,83 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 
   return {
     publicUrl: url('PUBLIC_URL', env.PUBLIC_URL),
-    portalUrl: url('B24_PORTAL_URL', env.B24_PORTAL_URL),
+    allowLocalPortal: ['localhost', '127.0.0.1'].includes(new URL(url('PUBLIC_URL', env.PUBLIC_URL)).hostname),
+    defaultPortal,
     b24ClientId: required('B24_CLIENT_ID'),
     b24ClientSecret: required('B24_CLIENT_SECRET'),
     b24OAuthServers: servers,
     encryptionKey: key,
-    isAllowed: rawAllowed === '*' ? () => true : (id: number) => allowed.has(id),
+    isAllowed,
     accessTtlSec: ttl('ACCESS_TTL_SEC', 3600),
     refreshTtlSec: ttl('REFRESH_TTL_SEC', 30 * 24 * 3600),
+  }
+}
+
+/**
+ * Адрес портала, как его ввёл человек («mycompany.bitrix24.by», «https://b24.firma.by/crm/»), → хост.
+ * null — не похоже на адрес. Только хост: путь, порт и логин в адресе входа портала не нужны.
+ */
+export function portalHost(input: string): string | null {
+  let s = input.trim().toLowerCase()
+  if (!s) return null
+  if (!/^[a-z]+:\/\//.test(s)) s = `https://${s}`
+  let u: URL
+  try {
+    u = new URL(s)
+  }
+  catch {
+    return null
+  }
+  if (!['https:', 'http:'].includes(u.protocol) || u.username || u.password || u.port) return null
+  const h = u.hostname
+  // Хотя бы одна точка, только буквы/цифры/дефисы (кириллица приходит в punycode от URL).
+  if (!/^(?=.{4,253}$)([a-z0-9-]{1,63}\.)+[a-z0-9-]{2,63}$/.test(h)) return null
+  return h
+}
+
+/**
+ * ALLOWED_USERS — кому открыт вход. Закрыто по умолчанию: пустой список — ошибка запуска.
+ *   *                         — все сотрудники любого портала, где стоит приложение
+ *   mycompany.bitrix24.by     — все сотрудники этого портала
+ *   mycompany.bitrix24.by:7   — сотрудник 7 этого портала
+ *   member:<member_id>[:7]    — то же по постоянному ID портала
+ *   7                         — сотрудник 7 портала по умолчанию (B24_PORTAL_URL)
+ * Хост — это адрес, который портал сообщил OAuth-серверу о себе. У облака он подлинный, у коробки
+ * его задаёт её администратор: для коробок надёжнее member_id (он не меняется и при переименовании).
+ */
+export function parseAllowed(raw: string, defaultPortal?: string): (who: { host: string, memberId: string, userId: number }) => boolean {
+  const usage = 'ALLOWED_USERS: comma-separated portal, portal:userId, member:<id>[:userId], userId (with B24_PORTAL_URL) or *'
+  if (raw.trim() === '*') return who => Boolean(who.host && who.memberId)
+  const portals = new Set<string>()
+  const users = new Set<string>()
+  const members = new Set<string>()
+  const memberUsers = new Set<string>()
+  for (const part of raw.split(',')) {
+    const t = part.trim()
+    if (!t) continue
+    const mm = /^member:([a-z0-9]{8,64})(?::(\d+))?$/i.exec(t)
+    if (mm) {
+      if (mm[2]) memberUsers.add(`${mm[1]!.toLowerCase()}:${mm[2]}`)
+      else members.add(mm[1]!.toLowerCase())
+      continue
+    }
+    if (/^member:/i.test(t)) throw new Error(`${usage}: bad entry "${t}"`)
+    const m = /^(?:(.+):)?(\d+)$/.exec(t)
+    if (m) {
+      const portal = m[1] ? portalHost(m[1]) : defaultPortal
+      if (!portal) throw new Error(m[1] ? `${usage}: bad portal "${m[1]}"` : `${usage}: bare ID "${t}" needs B24_PORTAL_URL`)
+      users.add(`${portal}:${m[2]}`)
+      continue
+    }
+    const portal = portalHost(t)
+    if (!portal) throw new Error(`${usage}: bad entry "${t}"`)
+    portals.add(portal)
+  }
+  if (!portals.size && !users.size && !members.size && !memberUsers.size) throw new Error(usage)
+  return ({ host, memberId, userId }) => {
+    // Сессия старой формы (до «любого портала») — без портала: не пускаем, пусть войдёт заново.
+    if (!host || !memberId) return false
+    const m = memberId.toLowerCase()
+    return portals.has(host) || users.has(`${host}:${userId}`) || members.has(m) || memberUsers.has(`${m}:${userId}`)
   }
 }

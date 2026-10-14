@@ -1,6 +1,6 @@
 # Разворот на VM с BitrixVM
 
-> Last reviewed: 2026-10-13
+> Last reviewed: 2026-10-14
 
 Сервер ставится на ту же VM, что и портал, рядом с `toolsai-mp3-txt`, и слушает только
 `127.0.0.1:3100`. Наружу его открывает nginx портала по пути `/mcp-ai/`. Обновление образа —
@@ -89,10 +89,11 @@ mkdir -m 700 state
 nano .env
 ```
 
-- `PUBLIC_URL=https://b24.stuttgart.by/mcp-ai`, `B24_PORTAL_URL=https://b24.stuttgart.by`;
+- `PUBLIC_URL=https://b24.stuttgart.by/mcp-ai`; `B24_PORTAL_URL=https://b24.stuttgart.by` — необязательно,
+  портал по умолчанию: подставится в поле входа, голые ID в `ALLOWED_USERS` относятся к нему;
 - `B24_CLIENT_ID`, `B24_CLIENT_SECRET` — из локального приложения;
 - `ENCRYPTION_KEY` — `openssl rand -base64 32` (сменить потом = все входят заново);
-- `ALLOWED_USERS=1` — пилот на одном сотруднике (шаг 6 плана). Обязательно: пусто — сервер не стартует, всем — `*`;
+- `ALLOWED_USERS=1` (или `b24.stuttgart.by:1`) — пилот на одном сотруднике (шаг 6 плана). Обязательно: пусто — сервер не стартует, всем — `*`;
 - `REDIS_PASSWORD` — `openssl rand -hex 24`.
 
 ## 3. Первый запуск (bitrix)

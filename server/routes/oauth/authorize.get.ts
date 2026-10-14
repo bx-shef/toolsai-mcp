@@ -1,3 +1,5 @@
+import { PORTAL_COOKIE } from '../../utils/consent'
+
 // Ошибки здесь показываются человеку в браузере, а не уводят на непроверенный адрес клиента.
 export default defineEventHandler(async (event) => {
   try {
@@ -10,7 +12,7 @@ export default defineEventHandler(async (event) => {
       'X-Frame-Options': 'DENY', // согласие нельзя «нажать» из чужой рамки
       'Content-Security-Policy': `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${new URL(cfg.publicUrl).origin}; frame-ancestors 'none'`,
     })
-    return consentPage(txn, clientName, redirectHost, `${cfg.publicUrl}/oauth/consent`)
+    return consentPage(txn, clientName, redirectHost, `${cfg.publicUrl}/oauth/consent`, getCookie(event, PORTAL_COOKIE) || cfg.defaultPortal || '')
   }
   catch (e) {
     return oauthFail(event, e)
