@@ -1,10 +1,13 @@
 # Документы
 
-> Last reviewed: 2026-10-13
+> Last reviewed: 2026-10-14
 
 | Документ | О чём |
 |---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | вход, права, инструменты, адрес снаружи, риски |
+| [MODULE_TOOLS.md](MODULE_TOOLS.md) | свои модули портала: манифест инструментов, пример PHP, подключение |
+| [COMPARISON.md](COMPARISON.md) | наш сервер против облачного MCP Битрикс24 |
+| [SMOKE.md](SMOKE.md) | живое наблюдение на тестовом портале (`npm run smoke`) |
 | [OAUTH_CHECK.md](OAUTH_CHECK.md) | шаг 1: проверить OAuth локального приложения на портале |
 | [DEPLOY_BITRIXVM.md](DEPLOY_BITRIXVM.md) | разворот на VM портала, nginx, подключение Claude, обслуживание |
 | [REPO_SETUP_CHECKLIST.md](REPO_SETUP_CHECKLIST.md) | разовая настройка репозитория владельцем |
