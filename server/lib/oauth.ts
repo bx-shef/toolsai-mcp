@@ -166,7 +166,7 @@ export class OAuthServer {
       console.error('[oauth] вход через Битрикс24:', e instanceof Error ? e.message : e)
       return this.back(pending, { error: 'server_error', error_description: 'Битрикс24 не выдал токены — попробуйте ещё раз' })
     }
-    if (!this.cfg.isAllowed(who.host, who.userId)) {
+    if (!this.cfg.isAllowed(who)) {
       await this.b24.forget(who)
       return this.back(pending, { error: 'access_denied', error_description: 'Доступ к MCP для этого сотрудника не открыт' })
     }
@@ -198,7 +198,7 @@ export class OAuthServer {
     if (body.grant_type === 'refresh_token') {
       const s = typeof body.refresh_token === 'string' ? await this.store.take<Session>(`rt:${sha256(body.refresh_token)}`) : null
       if (!s || s.clientId !== clientId) throw new OAuthError('invalid_grant', 'refresh_token неверный или устарел')
-      if (!this.cfg.isAllowed(s.host, s.userId)) throw new OAuthError('invalid_grant', 'Доступ закрыт')
+      if (!this.cfg.isAllowed(s)) throw new OAuthError('invalid_grant', 'Доступ закрыт')
       // Токенов Битрикс24 нет (отказ портала, истекли) — refresh бесполезен: клиент должен войти заново.
       if (!await this.b24.hasTokens(s)) throw new OAuthError('invalid_grant', 'Нужен новый вход через Битрикс24')
       return this.issue(s, s.clientId)
@@ -212,7 +212,7 @@ export class OAuthServer {
     if (!m?.[1]) return null
     const s = await this.store.get<Session>(`at:${sha256(m[1])}`)
     if (!s) return null
-    if (!this.cfg.isAllowed(s.host, s.userId)) return null
+    if (!this.cfg.isAllowed(s)) return null
     // Портал отозвал вход сотрудника — наш токен тоже не годится: 401 запустит новый вход у клиента.
     if (!await this.b24.hasTokens(s)) return null
     return s

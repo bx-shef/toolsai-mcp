@@ -177,7 +177,7 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     const rest = fake.calls.filter((c: any) => /^\/rest\/crm\.deal\.get(\.json)?$/.test(c.path)).at(-1)
     expect(rest.body.auth).toMatch(/^at\d+$/)
     // журнал: имена аргументов, без значений
-    expect(logs).toMatch(/"kind":"audit","portal":"localhost","user":7,"tool":"crm_deal_get","method":"crm.deal.get","args":\["id"\],"ok":true/)
+    expect(logs).toMatch(/"kind":"audit","portal":"localhost","member":"fake0member1","user":7,"tool":"crm_deal_get","method":"crm.deal.get","args":\["id"\],"ok":true/)
   })
 
   it('код одноразовый, PKCE и redirect_uri проверяются', async () => {

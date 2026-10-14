@@ -1,3 +1,7 @@
+import { lookup as dnsLookup } from 'node:dns'
+import { lookup } from 'node:dns/promises'
+import { Agent } from 'node:https'
+import { BlockList, isIP } from 'node:net'
 import { B24OAuth } from '@bitrix24/b24jssdk'
 import type { Config } from './config'
 import { decrypt, encrypt } from './crypto'
@@ -59,7 +63,15 @@ export class B24 {
     private fetchFn: Fetch = fetch,
     private now = () => Date.now(),
     private transport: RestTransport = sdkTransport(cfg),
+    private resolve: Resolve = dnsResolve,
   ) {}
+
+  /** Внутренняя сеть закрыта для любого портала; локальный — только локальному серверу (тесты). */
+  private async guard(endpoint: string) {
+    const host = new URL(endpoint).hostname
+    if (this.cfg.allowLocalPortal && ['localhost', '127.0.0.1'].includes(host)) return
+    await assertPublicHost(host, this.resolve)
+  }
 
   /**
    * Страница входа портала, адрес которого назвал человек. Сервер туда сам не ходит — только браузер,
@@ -115,9 +127,10 @@ export class B24 {
   async login(code: string, serverDomain?: string): Promise<Who & { name: string }> {
     const server = this.pickServer(serverDomain)
     const body = await this.tokenRequest(server, { grant_type: 'authorization_code', code })
-    const endpoint = restEndpoint(body.client_endpoint)
+    const endpoint = restEndpoint(body.client_endpoint, this.cfg.allowLocalPortal)
     const memberId = String(body.member_id ?? '')
     if (!endpoint || !/^[a-z0-9]{8,64}$/i.test(memberId)) throw new B24Error('bad_token_response', 'OAuth-сервер не вернул client_endpoint или member_id')
+    await this.guard(endpoint)
     const { result: me } = await this.transport(
       { endpoint, access: body.access_token, refresh: async () => { throw new ReloginRequired('expired_token', 'Токен истёк сразу после входа') } },
       'user.current', {},
@@ -163,23 +176,78 @@ export class B24 {
   async call(w: Who, method: string, params: Record<string, unknown> = {}): Promise<RestResult> {
     if (!/^[a-z0-9_.]+$/i.test(method)) throw new B24Error('bad_method', `Недопустимое имя метода: ${method}`)
     const { access, endpoint } = await this.token(w)
+    await this.guard(endpoint)
     // Обновляем, только если в хранилище всё тот же отвергнутый токен: соседний вызов мог уже
     // получить свежий, а refresh у Битрикс24 одноразовый — лишнее обновление его сжигает.
     return this.transport({ endpoint, access, refresh: async () => (await this.token(w, access)).access }, method, params)
   }
 }
 
-/** client_endpoint из ответа OAuth-сервера → «https://портал/rest/». Только https (http — лишь локально, для тестов). */
-export function restEndpoint(value: unknown): string | null {
+/**
+ * client_endpoint из ответа OAuth-сервера → «https://портал/rest/». Адрес сообщает о себе сам портал
+ * (у коробки — её администратор), поэтому: только https и имя, без IP и localhost. Локальный адрес —
+ * лишь когда сервер сам локальный (тесты).
+ */
+export function restEndpoint(value: unknown, allowLocal = false): string | null {
   if (typeof value !== 'string') return null
   try {
     const u = new URL(value)
-    const local = u.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(u.hostname)
-    if ((u.protocol !== 'https:' && !local) || u.username || u.password || u.search || u.hash) return null
+    if (u.username || u.password || u.search || u.hash) return null
+    const local = ['localhost', '127.0.0.1'].includes(u.hostname)
+    if (local) return allowLocal ? `${u.origin}${u.pathname.replace(/\/*$/, '/')}` : null
+    if (u.protocol !== 'https:' || isIP(u.hostname.replace(/^\[|\]$/g, '')) || !u.hostname.includes('.')) return null
     return `${u.origin}${u.pathname.replace(/\/*$/, '/')}`
   }
   catch {
     return null
+  }
+}
+
+const PRIVATE = new BlockList()
+for (const [net, bits] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.168.0.0', 16], ['198.18.0.0', 15], ['224.0.0.0', 3]] as const) PRIVATE.addSubnet(net, bits, 'ipv4')
+for (const [net, bits] of [['::', 127], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8]] as const) PRIVATE.addSubnet(net, bits, 'ipv6')
+
+/** IP из внутренней сети? */
+export function isPrivateIp(ip: string): boolean {
+  // ::ffff:10.0.0.1 — тот же IPv4; правило ::ffff:0:0/96 в BlockList зацепило бы и все публичные IPv4.
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip)
+  if (mapped) return PRIVATE.check(mapped[1]!, 'ipv4')
+  return PRIVATE.check(ip, isIP(ip) === 6 ? 'ipv6' : 'ipv4')
+}
+
+/**
+ * Агент https для REST портала: адрес проверяется в момент соединения — то же разрешение имени,
+ * по которому идёт запрос, поэтому подмена DNS между проверкой и запросом не проходит.
+ */
+const publicAgent = new Agent({
+  keepAlive: true,
+  lookup: (host, opts, cb) => dnsLookup(host, { ...opts, all: true }, (err, addrs) => {
+    if (err) return (cb as any)(err)
+    const list = addrs as unknown as { address: string, family: number }[]
+    if (!list.length || list.some(a => isPrivateIp(a.address))) return (cb as any)(Object.assign(new Error(`portal ${host} resolves to a private address`), { code: 'portal_private' }))
+    if ((opts as { all?: boolean }).all) return (cb as any)(null, list)
+    return (cb as any)(null, list[0]!.address, list[0]!.family)
+  }),
+})
+
+export type Resolve = (host: string) => Promise<string[]>
+const dnsResolve: Resolve = async host => (await lookup(host, { all: true })).map(a => a.address)
+
+/**
+ * Хост портала должен вести только в публичную сеть: иначе чужая коробка, назвавшись
+ * «10.0.0.5.example», отправила бы наш сервер с токеном во внутреннюю сеть. Проверяем перед каждым
+ * вызовом — DNS мог смениться после входа.
+ */
+export async function assertPublicHost(host: string, resolve: Resolve = dnsResolve): Promise<void> {
+  let addrs: string[]
+  try {
+    addrs = await resolve(host)
+  }
+  catch {
+    throw new B24Error('portal_unreachable', `Не удалось найти адрес портала ${host}`)
+  }
+  if (!addrs.length || addrs.some(isPrivateIp)) {
+    throw new B24Error('portal_private', `Адрес портала ${host} ведёт во внутреннюю сеть — запрещено`)
   }
 }
 
@@ -213,7 +281,10 @@ export function sdkTransport(cfg: Config): RestTransport {
       serverEndpoint: `${cfg.b24OAuthServers[0]}/rest/`,
       status: 'L',
       issuer: 'request',
-    } as never, { clientId: cfg.b24ClientId, clientSecret: cfg.b24ClientSecret })
+    } as never, { clientId: cfg.b24ClientId, clientSecret: cfg.b24ClientSecret }, {
+      // Без редиректов: портал мог бы увести запрос с нашим токеном во внутреннюю сеть.
+      httpOptions: { maxRedirects: 0, timeout: 30_000, ...(portal.protocol === 'https:' ? { httpsAgent: publicAgent } : {}) },
+    } as never)
     let refreshError: unknown
     b24.setCustomRefreshAuth(async () => {
       try {
@@ -256,6 +327,7 @@ export function fetchTransport(_cfg: Config, fetchFn: Fetch): RestTransport {
   const once = async (endpoint: string, access: string, method: string, params: Record<string, unknown>) => {
     const res = await fetchFn(`${endpoint}${method}.json`, {
       method: 'POST',
+      redirect: 'manual',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...params, auth: access }),
     })

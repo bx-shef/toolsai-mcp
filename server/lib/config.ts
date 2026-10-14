@@ -16,7 +16,9 @@ export interface Config {
   /** Ключ 32 байта для токенов Битрикс24 в Redis. */
   encryptionKey: Buffer
   /** Открыт ли вход сотруднику портала: ALLOWED_USERS — см. parseAllowed. */
-  isAllowed: (portal: string, userId: number) => boolean
+  isAllowed: (who: { host: string, memberId: string, userId: number }) => boolean
+  /** Разрешить REST на localhost/127.0.0.1 — только когда сам сервер локальный (тесты, разработка). */
+  allowLocalPortal: boolean
   accessTtlSec: number
   refreshTtlSec: number
 }
@@ -55,6 +57,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 
   return {
     publicUrl: url('PUBLIC_URL', env.PUBLIC_URL),
+    allowLocalPortal: ['localhost', '127.0.0.1'].includes(new URL(url('PUBLIC_URL', env.PUBLIC_URL)).hostname),
     defaultPortal,
     b24ClientId: required('B24_CLIENT_ID'),
     b24ClientSecret: required('B24_CLIENT_SECRET'),
@@ -93,16 +96,28 @@ export function portalHost(input: string): string | null {
  *   *                         — все сотрудники любого портала, где стоит приложение
  *   mycompany.bitrix24.by     — все сотрудники этого портала
  *   mycompany.bitrix24.by:7   — сотрудник 7 этого портала
+ *   member:<member_id>[:7]    — то же по постоянному ID портала
  *   7                         — сотрудник 7 портала по умолчанию (B24_PORTAL_URL)
+ * Хост — это адрес, который портал сообщил OAuth-серверу о себе. У облака он подлинный, у коробки
+ * его задаёт её администратор: для коробок надёжнее member_id (он не меняется и при переименовании).
  */
-export function parseAllowed(raw: string, defaultPortal?: string): (portal: string, userId: number) => boolean {
-  const usage = 'ALLOWED_USERS: comma-separated portal, portal:userId, userId (with B24_PORTAL_URL) or *'
-  if (raw.trim() === '*') return () => true
+export function parseAllowed(raw: string, defaultPortal?: string): (who: { host: string, memberId: string, userId: number }) => boolean {
+  const usage = 'ALLOWED_USERS: comma-separated portal, portal:userId, member:<id>[:userId], userId (with B24_PORTAL_URL) or *'
+  if (raw.trim() === '*') return who => Boolean(who.host && who.memberId)
   const portals = new Set<string>()
   const users = new Set<string>()
+  const members = new Set<string>()
+  const memberUsers = new Set<string>()
   for (const part of raw.split(',')) {
     const t = part.trim()
     if (!t) continue
+    const mm = /^member:([a-z0-9]{8,64})(?::(\d+))?$/i.exec(t)
+    if (mm) {
+      if (mm[2]) memberUsers.add(`${mm[1]!.toLowerCase()}:${mm[2]}`)
+      else members.add(mm[1]!.toLowerCase())
+      continue
+    }
+    if (/^member:/i.test(t)) throw new Error(`${usage}: bad entry "${t}"`)
     const m = /^(?:(.+):)?(\d+)$/.exec(t)
     if (m) {
       const portal = m[1] ? portalHost(m[1]) : defaultPortal
@@ -114,6 +129,11 @@ export function parseAllowed(raw: string, defaultPortal?: string): (portal: stri
     if (!portal) throw new Error(`${usage}: bad entry "${t}"`)
     portals.add(portal)
   }
-  if (!portals.size && !users.size) throw new Error(usage)
-  return (portal, userId) => portals.has(portal) || users.has(`${portal}:${userId}`)
+  if (!portals.size && !users.size && !members.size && !memberUsers.size) throw new Error(usage)
+  return ({ host, memberId, userId }) => {
+    // Сессия старой формы (до «любого портала») — без портала: не пускаем, пусть войдёт заново.
+    if (!host || !memberId) return false
+    const m = memberId.toLowerCase()
+    return portals.has(host) || users.has(`${host}:${userId}`) || members.has(m) || memberUsers.has(`${m}:${userId}`)
+  }
 }

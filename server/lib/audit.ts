@@ -5,6 +5,8 @@
 export interface AuditEntry {
   /** Хост портала: сервер работает с любым Битрикс24, ID сотрудника без портала неоднозначен. */
   portal: string
+  /** member_id портала — однозначен и после переименования. */
+  member: string
   user: number
   tool: string
   method?: string

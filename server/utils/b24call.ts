@@ -12,12 +12,12 @@ export async function b24Call(tool: string, method: string, params: Record<strin
   const started = Date.now()
   try {
     const res = await useServices().b24.call(session, method, params)
-    audit({ portal: session.host, user: session.userId, tool, method, args: Object.keys(args), ok: true, ms: Date.now() - started })
+    audit({ portal: session.host, member: session.memberId, user: session.userId, tool, method, args: Object.keys(args), ok: true, ms: Date.now() - started })
     return res
   }
   catch (e) {
     const code = e instanceof B24Error ? e.code : 'internal'
-    audit({ portal: session.host, user: session.userId, tool, method, args: Object.keys(args), ok: false, error: code, ms: Date.now() - started })
+    audit({ portal: session.host, member: session.memberId, user: session.userId, tool, method, args: Object.keys(args), ok: false, error: code, ms: Date.now() - started })
     // Портал не принял токены: забываем их — следующий запрос к /mcp получит 401 и клиент войдёт заново.
     if (e instanceof ReloginRequired) {
       await useServices().b24.forget(session)

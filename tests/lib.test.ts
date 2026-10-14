@@ -18,19 +18,25 @@ describe('config', () => {
   it('убирает хвостовой слэш, разбирает ALLOWED_USERS', () => {
     const c = loadConfig({ ...env, ALLOWED_USERS: '1, 15' })
     expect(c.publicUrl).toBe('https://b24.example/mcp-ai')
-    expect(c.isAllowed('b24.example', 15)).toBe(true)
-    expect(c.isAllowed('b24.example', 2)).toBe(false)
-    expect(c.isAllowed('other.bitrix24.by', 15)).toBe(false)
-    expect(loadConfig({ ...env, ALLOWED_USERS: '*' }).isAllowed('any.bitrix24.by', 999)).toBe(true)
+    expect(c.isAllowed({ host: 'b24.example', memberId: 'm0123456789', userId: 15 })).toBe(true)
+    expect(c.isAllowed({ host: 'b24.example', memberId: 'm0123456789', userId: 2 })).toBe(false)
+    expect(c.isAllowed({ host: 'other.bitrix24.by', memberId: 'm0123456789', userId: 15 })).toBe(false)
+    expect(loadConfig({ ...env, ALLOWED_USERS: '*' }).isAllowed({ host: 'any.bitrix24.by', memberId: 'm0123456789', userId: 999 })).toBe(true)
   })
   it('ALLOWED_USERS по порталам: портал целиком и портал:ID, без портала по умолчанию', () => {
     const { B24_PORTAL_URL: _, ...noPortal } = env
     const c = loadConfig({ ...noPortal, ALLOWED_USERS: 'a.bitrix24.by, https://B.bitrix24.ru:7' })
     expect(c.defaultPortal).toBeUndefined()
-    expect(c.isAllowed('a.bitrix24.by', 123)).toBe(true)
-    expect(c.isAllowed('b.bitrix24.ru', 7)).toBe(true)
-    expect(c.isAllowed('b.bitrix24.ru', 8)).toBe(false)
+    expect(c.isAllowed({ host: 'a.bitrix24.by', memberId: 'm0123456789', userId: 123 })).toBe(true)
+    expect(c.isAllowed({ host: 'b.bitrix24.ru', memberId: 'm0123456789', userId: 7 })).toBe(true)
+    expect(c.isAllowed({ host: 'b.bitrix24.ru', memberId: 'm0123456789', userId: 8 })).toBe(false)
     expect(() => loadConfig({ ...noPortal, ALLOWED_USERS: '7' })).toThrow(/B24_PORTAL_URL/)
+    expect(() => loadConfig({ ...noPortal, ALLOWED_USERS: 'member:x' })).toThrow(/ALLOWED_USERS/)
+  })
+  it('внутренние адреса: v4, v6, v4 в v6; публичные — нет', async () => {
+    const { isPrivateIp } = await import('../server/lib/b24')
+    for (const ip of ['10.1.1.1', '127.0.0.1', '169.254.169.254', '192.168.0.1', '172.20.0.1', '::1', 'fd00::1', 'fe80::1', '::ffff:10.0.0.1']) expect(isPrivateIp(ip), ip).toBe(true)
+    for (const ip of ['93.184.216.34', '8.8.8.8', '2a00:1450::1', '::ffff:8.8.8.8']) expect(isPrivateIp(ip), ip).toBe(false)
   })
   it('пустой ALLOWED_USERS — отказ запуска (закрыто по умолчанию)', () => {
     expect(() => loadConfig({ ...env, ALLOWED_USERS: '' })).toThrow(/ALLOWED_USERS/)
