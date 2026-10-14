@@ -35,4 +35,9 @@ describe('repo', () => {
     const dir = 'server/mcp/tools'
     for (const f of readdirSync(dir)) expect(readFileSync(join(dir, f), 'utf8'), f).toMatch(/annotations: READ_ONLY/)
   })
+  it('BUILTIN_TOOLS совпадает с файлами инструментов — модуль не перекроет встроенный', async () => {
+    const { BUILTIN_TOOLS } = await import('../server/lib/manifest')
+    const names = readdirSync('server/mcp/tools').map(f => /name: '([a-z_]+)'/.exec(readFileSync(join('server/mcp/tools', f), 'utf8'))![1])
+    expect([...BUILTIN_TOOLS].sort()).toEqual(names.sort())
+  })
 })

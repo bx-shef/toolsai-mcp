@@ -19,6 +19,13 @@ export interface Config {
   isAllowed: (who: { host: string, memberId: string, userId: number }) => boolean
   /** Разрешить REST на localhost/127.0.0.1 — только когда сам сервер локальный (тесты, разработка). */
   allowLocalPortal: boolean
+  /**
+   * Методы-манифесты модулей портала (MODULE_MANIFESTS, через запятую): модуль описывает в нём свои
+   * инструменты. Пусто — инструментов модулей нет.
+   */
+  moduleManifests: string[]
+  /** Кому открыты инструменты модулей на запись и удаление (WRITE_USERS, формат ALLOWED_USERS). Пусто — никому. */
+  canWrite: (who: { host: string, memberId: string, userId: number }) => boolean
   accessTtlSec: number
   refreshTtlSec: number
 }
@@ -64,6 +71,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     b24OAuthServers: servers,
     encryptionKey: key,
     isAllowed,
+    moduleManifests: (env.MODULE_MANIFESTS ?? '').split(',').map(s => s.trim()).filter(Boolean).map((m) => {
+      if (!/^[a-z0-9_]+(\.[a-z0-9_]+)+$/i.test(m)) throw new Error(`MODULE_MANIFESTS: "${m}" is not a REST method name like vendor.mcp.tools`)
+      return m
+    }),
+    canWrite: env.WRITE_USERS?.trim() ? parseAllowed(env.WRITE_USERS, defaultPortal) : () => false,
     accessTtlSec: ttl('ACCESS_TTL_SEC', 3600),
     refreshTtlSec: ttl('REFRESH_TTL_SEC', 30 * 24 * 3600),
   }

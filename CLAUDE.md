@@ -29,6 +29,7 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 | `server/middleware/00.auth.ts` | `/.well-known/*` (метаданные) и проверка Bearer на `/mcp` → `event.context.session` |
 | `server/routes/oauth/` | `register`, `authorize` (экран согласия + cookie входа, `server/utils/consent.ts`), `consent`, `callback` (возврат с портала), `token` |
 | `server/mcp/tools/` | инструменты MCP; REST — только через `b24Call()` (`server/utils/b24call.ts`): сотрудник из сессии, журнал |
+| `server/lib/manifest.ts`, `server/plugins/module-tools.ts` | инструменты модулей портала из манифеста (`MODULE_MANIFESTS`), запись — только `WRITE_USERS` — `docs/MODULE_TOOLS.md` |
 | `server/utils/services.ts` | синглтоны: конфиг, Redis/память, `B24`, `OAuthServer` |
 | `tests/` | `e2e.test.ts` — весь путь на собранном сервере против `fake-b24.mjs` (в CI без сборки падает); `oauth.test.ts` — защитные проверки OAuth и `B24` с подставным временем и fetch; `lib.test.ts`; `repo.test.ts` — гарды |
 | `smoke/observe.mjs` | живое наблюдение на тестовом портале через вебхук из `.env.b24test` (`npm run smoke`, не в CI) — `docs/SMOKE.md` |
@@ -38,8 +39,9 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 - **Кто вызывает — только из токена.** Инструмент никогда не берёт ID сотрудника или портал из аргументов;
   `b24Call()` берёт его из сессии. Обход прав Битрикс24 недопустим — в этом смысл схемы.
-- **Узкие инструменты, не «вызвать любой метод».** Каждый — с `annotations: READ_ONLY`, пока нет
-  режима записи (гард в `tests/repo.test.ts`). Запись — шаг 5 плана: отдельный список сотрудников,
+- **Узкие инструменты, не «вызвать любой метод».** Встроенные — с `annotations: READ_ONLY`
+  (гард в `tests/repo.test.ts`). Инструменты модулей — только методы вендора манифеста, только ключи из схемы,
+  запись и удаление — только `WRITE_USERS`; манифесты задаёт администратор, модули доверенные. Запись — шаг 5 плана: отдельный список сотрудников,
   подтверждение, журнал «было/стало».
 - **Персональные данные.** В журнал — только имена аргументов, не значения; ответы REST не логируем.
   Токены Битрикс24 — только в Redis, refresh — зашифрован `ENCRYPTION_KEY`.
