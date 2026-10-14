@@ -97,3 +97,39 @@ describe('store', () => {
     expect(r.filter(Boolean)).toEqual(['code'])
   })
 })
+
+describe('manifest', async () => {
+  const { parseManifest, annotationsFor } = await import('../server/lib/manifest')
+  const ok = { name: 'kb_get', method: 'shef.kb.get', description: 'Статья', input: { type: 'object', properties: { id: { type: 'integer' } } } }
+  it('годная запись проходит, kind по умолчанию — read; {tools:[...]} тоже принимается', () => {
+    expect(parseManifest([ok], 'shef.mcp.tools', new Set()).tools).toEqual([{ ...ok, kind: 'read' }])
+    expect(parseManifest({ tools: [ok] }, 'shef.mcp.tools', new Set()).tools).toHaveLength(1)
+  })
+  it('плохие записи отсеиваются с причиной, остальные остаются', () => {
+    const bad = [
+      { ...ok, name: 'Bad-Name' },
+      { ...ok, name: 'a1', method: 'crm.deal.delete' },
+      { ...ok, name: 'a2', method: 'shef.mcp.tools' },
+      { ...ok, name: 'a3', method: 'shefx.kb.get' },
+      { ...ok, name: 'a4', kind: 'exec' },
+      { ...ok, name: 'a5', description: '' },
+      { ...ok, name: 'a6', input: { type: 'string' } },
+      { ...ok, name: 'user_current' },
+      ok, ok,
+    ]
+    const r = parseManifest(bad, 'shef.mcp.tools', new Set(['user_current']))
+    expect(r.tools.map(t => t.name)).toEqual(['kb_get'])
+    expect(r.errors).toHaveLength(9)
+    expect(parseManifest('мусор', 'shef.mcp.tools', new Set()).tools).toEqual([])
+  })
+  it('удаление — опасное, запись — не только чтение', () => {
+    expect(annotationsFor('delete')).toMatchObject({ readOnlyHint: false, destructiveHint: true })
+    expect(annotationsFor('write')).toMatchObject({ readOnlyHint: false, destructiveHint: false })
+  })
+  it('MODULE_MANIFESTS и WRITE_USERS', () => {
+    expect(loadConfig({ ...env, MODULE_MANIFESTS: 'shef.mcp.tools, ' }).moduleManifests).toEqual(['shef.mcp.tools'])
+    expect(() => loadConfig({ ...env, MODULE_MANIFESTS: 'tools' })).toThrow(/MODULE_MANIFESTS/)
+    expect(loadConfig(env).canWrite({ host: 'b24.example', memberId: 'm0123456789', userId: 1 })).toBe(false)
+    expect(loadConfig({ ...env, WRITE_USERS: '1' }).canWrite({ host: 'b24.example', memberId: 'm0123456789', userId: 1 })).toBe(true)
+  })
+})

@@ -26,6 +26,7 @@ function start(extraEnv: Record<string, string> = {}) {
       B24_CLIENT_SECRET: 'sec',
       ENCRYPTION_KEY: randomBytes(32).toString('base64'),
       ALLOWED_USERS: '*',
+      MODULE_MANIFESTS: 'shef.mcp.tools',
       ...extraEnv,
     },
   })
@@ -296,9 +297,38 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(JSON.parse(ok.content[0].text)).toEqual({ id: '9' })
   })
 
+  it('инструменты модуля: из манифеста, только своего вендора, запись — только WRITE_USERS', async () => {
+    const t = await fullToken()
+    const list = await mcp(t.access_token, 'tools/list')
+    const tools = Object.fromEntries(list.body.result.tools.map((x: any) => [x.name, x]))
+    expect(tools.kb_search.annotations.readOnlyHint).toBe(true)
+    expect(tools.kb_search.inputSchema.required).toEqual(['query'])
+    expect(tools.kb_delete).toBeUndefined() // WRITE_USERS не задан
+    expect(tools.evil).toBeUndefined() // crm.deal.delete — не метод модуля
+    expect(tools.crm_deal_get.description).not.toContain('перекрыть')
+    const call = await mcp(t.access_token, 'tools/call', { name: 'kb_search', arguments: { query: 'отпуск' } })
+    expect(JSON.parse(call.body.result.content[0].text)).toMatchObject({ result: [{ title: 'Статья про отпуск', _asUser: 7 }], total: 1 })
+    const rest = fake.calls.filter((c: any) => /^\/rest\/shef\.kb\.search/.test(c.path)).at(-1)
+    expect(rest.body).toMatchObject({ query: 'отпуск', auth: expect.stringMatching(/^at\d+$/) })
+    // схема из манифеста проверяется до портала
+    const bad = await mcp(t.access_token, 'tools/call', { name: 'kb_search', arguments: { limit: 500 } })
+    expect(bad.body.result.isError).toBe(true)
+    expect(logs).toMatch(/"tool":"module:kb_search","method":"shef.kb.search","args":\["query"\],"ok":true/)
+  })
+
   it('/health не выдаёт внутренние подробности', async () => {
     const h = await (await fetch(`${BASE}/health`)).json()
     expect(Object.keys(h).sort()).toEqual(['commit', 'ready', 'status'])
+  })
+
+  it('WRITE_USERS: сотруднику открыто — инструмент удаления виден и помечен опасным', async () => {
+    app.kill()
+    await new Promise(r => setTimeout(r, 300))
+    start({ WRITE_USERS: 'member:fake0member1:7' })
+    await waitUp()
+    const t = await fullToken()
+    const tools = Object.fromEntries((await mcp(t.access_token, 'tools/list')).body.result.tools.map((x: any) => [x.name, x]))
+    expect(tools.kb_delete.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true })
   })
 
   it('ALLOWED_USERS: сотрудник не в списке — access_denied клиенту', async () => {
