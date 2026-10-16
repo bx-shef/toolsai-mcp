@@ -1,6 +1,6 @@
 # Разворот на VM с BitrixVM
 
-> Last reviewed: 2026-10-14
+> Last reviewed: 2026-10-16
 
 Сервер ставится на ту же VM, что и портал, рядом с `toolsai-mp3-txt`, и слушает только
 `127.0.0.1:3100`. Наружу его открывает nginx портала по пути `/mcp-ai/`. Обновление образа —
@@ -17,9 +17,8 @@ GitHub main ──CI──► ghcr.io/bx-shef/toolsai-mcp:sha-<коммит>
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-⚠ **На живой BitrixVM ещё не выполнялось.** Схема выката повторяет проверенную на этой VM у
-`toolsai-mp3-txt` (2026-10-04); новое здесь — nginx и Redis. Первый разворот — с владельцем,
-расхождения — правкой этого файла.
+Развёрнуто на `b24.stuttgart.by` 2026-10-16 по этой инструкции: вход сотрудника, задачи и дела CRM
+в Claude работают. Расхождения на других VM — правкой этого файла.
 
 ## Граница безопасности
 
@@ -106,20 +105,27 @@ make check
 
 ## 4. nginx (root, владелец)
 
-Конфиг сайта портала у bitrix-env генерируется, поэтому вставку кладём отдельным файлом и
-подключаем `include`. Где именно у этой VM лежит HTTPS-сервер портала и куда bitrix-env
-разрешает свои вставки — посмотреть на сервере, не угадывать:
+На bitrix-env конфиг сайта генерируется, `/etc/nginx/conf.d/` не подключается. Проверено на
+`b24.stuttgart.by` (2026-10-16): в `http { }` подключается `bx/settings/*.conf`, внутри HTTPS-сервера
+портала — `bx/site_settings/default/*.conf`. Сверить на своей VM:
 
 ```bash
 nginx -T 2>/dev/null | grep -nE 'server_name|listen .*443|include'
 ```
 
-1. В `http { }` (любой файл, который nginx подключает на уровне http) — зоны частоты и соединений:
-   `limit_req_zone $binary_remote_addr zone=mcp_ai:10m rate=10r/s;`
-   `limit_conn_zone $binary_remote_addr zone=mcp_ai_conn:10m;`
-2. В `server { }` HTTPS-сайта портала — `include` файла с содержимым
-   `src/deploy/bitrixvm/nginx-mcp.conf`.
-3. `nginx -t && systemctl reload nginx`.
+```bash
+cat > /etc/nginx/bx/settings/mcp-ai.conf <<'EOF'
+# toolsai-mcp: ограничения для /mcp-ai/ (подключается в http {})
+limit_req_zone  $binary_remote_addr zone=mcp_ai:10m rate=10r/s;
+limit_conn_zone $binary_remote_addr zone=mcp_ai_conn:10m;
+EOF
+cp /home/bitrix/mcp/src/deploy/bitrixvm/nginx-mcp.conf /etc/nginx/bx/site_settings/default/mcp-ai.conf
+nginx -t && systemctl reload nginx
+```
+
+`nginx -t` ругается — не перезагружать: портал работает на старом конфиге. В вставке —
+`location ^~ /mcp-ai/`: без `^~` правила по маскам из `bx/conf/bitrix.conf` могли бы перехватить
+наши адреса.
 
 Проверка снаружи (с любой машины):
 

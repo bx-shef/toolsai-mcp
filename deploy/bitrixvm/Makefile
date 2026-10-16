@@ -67,7 +67,7 @@ logs: ## журнал сервера
 	@docker logs --tail=30 mcp 2>&1
 
 audit: ## журнал действий сотрудников: make audit [N=50]
-	@docker logs --tail=2000 mcp 2>/dev/null | grep '"kind":"audit"' | tail -$(or $(N),50) | jq -c '{t, user, tool, method, ok, error, ms}'
+	@docker logs --tail=2000 mcp 2>/dev/null | grep '"kind":"audit"' | tail -$(or $(N),50) | jq -c '{t, portal, member, user, tool, method, ok, error, ms}'
 
 deploy-log: ## журнал выката
 	@tail -30 deploy.log
