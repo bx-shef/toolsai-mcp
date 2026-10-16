@@ -137,6 +137,7 @@ sequenceDiagram
 | `task_checklist_add`, `task_checklist_done` | `task.checklistitem.add`, `task.checklistitem.complete` / `renew` |
 | `task_comment_add` | `task.commentitem.add` (у новых задач попадает в чат задачи — проверено) |
 | `task_time_add` | `task.elapseditem.add` |
+| `calendar_event_add` | `calendar.event.add` в своём календаре; с участниками — встреча (проверено 2026-10-16) |
 
 Набор повторяет то, что Битрикс24 сам даёт Марте с разметкой «читает» (`bx-shef/toolsai`,
 `docs/private/mcp-box.md` §1.2), но поверх REST.

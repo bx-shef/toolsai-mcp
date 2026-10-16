@@ -106,6 +106,27 @@ const defs: Record<(typeof WRITE_TOOLS)[number], Def> = {
     input: { taskId: id, text: z.string().min(1).max(20000) },
     handler: async (a) => ({ commentId: (await b24Call('task_comment_add', 'task.commentitem.add', { TASKID: a.taskId, FIELDS: { POST_MESSAGE: a.text } }, a)).result }),
   },
+  calendar_event_add: {
+    title: 'Создать встречу в календаре',
+    description: 'Событие в своём календаре; с участниками — встреча, им придёт приглашение. Свободное время — calendar_busy.',
+    input: {
+      name: z.string().min(1).max(250),
+      from: dateTime,
+      to: dateTime,
+      timezone: z.string().regex(/^[A-Za-z_]+\/[A-Za-z_]+$/).default('Europe/Minsk'),
+      description: z.string().max(5000).optional(),
+      attendees: z.array(id).max(50).optional(),
+    },
+    handler: async (a) => {
+      const me = Number((await b24Call('calendar_event_add', 'user.current', {}, {})).result.ID)
+      const params: Record<string, unknown> = {
+        type: 'user', ownerId: me, name: a.name, from: a.from, to: a.to,
+        timezone_from: a.timezone, timezone_to: a.timezone, description: a.description ?? '',
+      }
+      if (a.attendees?.length) Object.assign(params, { is_meeting: 'Y', host: me, attendees: [...new Set([me, ...a.attendees])] })
+      return { eventId: (await b24Call('calendar_event_add', 'calendar.event.add', params, a)).result }
+    },
+  },
   task_time_add: {
     title: 'Записать затраченное время',
     description: 'Добавить запись учёта времени в задачу: минуты и комментарий (что сделано).',
