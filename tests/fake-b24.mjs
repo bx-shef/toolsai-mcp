@@ -2,7 +2,7 @@
 // Для tests/e2e.test.ts. Повторяет только проверенное по документации поведение.
 import { createServer } from 'node:http'
 
-export function startFakeB24() {
+export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
   const calls = []
   let n = 0
   const tokens = new Map() // access -> userId
@@ -13,6 +13,8 @@ export function startFakeB24() {
     let body = ''
     for await (const c of req) body += c
     const json = (code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)) }
+    // Стенд (stand/): сменить вошедшего сотрудника — POST /_state {"user": 1}
+    if (url.pathname === '/_state' && req.method === 'POST') { Object.assign(state, { user: Number(JSON.parse(body || '{}').user) || state.user }); return json(200, { user: state.user }) }
     calls.push({ path: url.pathname, query: Object.fromEntries(url.searchParams), body: body ? JSON.parse(body) : null })
     if (url.pathname === '/oauth/token/') {
       const q = url.searchParams
@@ -65,5 +67,5 @@ export function startFakeB24() {
     }
     json(404, {})
   })
-  return new Promise(r => server.listen(0, '127.0.0.1', () => r({ server, calls, state, url: `http://127.0.0.1:${server.address().port}` })))
+  return new Promise(r => server.listen(port, host, () => r({ server, calls, state, url: `http://${host === '0.0.0.0' ? 'localhost' : host}:${server.address().port}` })))
 }

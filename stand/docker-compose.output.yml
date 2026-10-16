@@ -1,0 +1,13 @@
+# Быстрый вариант: сервер из уже собранного .output (npm run build на хосте), без сборки образа.
+#   docker compose -f docker-compose.yml -f docker-compose.output.yml up -d
+services:
+  mcp:
+    build: !reset null
+    image: node:22.22.0-bookworm-slim
+    working_dir: /app
+    command: ["node", ".output/server/index.mjs"]
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3000"
+    volumes:
+      - ../.output:/app/.output:ro
