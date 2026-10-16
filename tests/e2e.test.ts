@@ -335,6 +335,15 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(logs).toMatch(/"tool":"module:kb_search","method":"shef.kb.search","args":\["query"\],"ok":true/)
   })
 
+  it('иконка коннектора: в initialize полный адрес, файл отдаётся', async () => {
+    const t = await fullToken()
+    const init = await mcp(t.access_token, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '0' } })
+    expect(init.body.result.serverInfo.icons).toEqual([{ src: `${BASE}/icon.svg`, mimeType: 'image/svg+xml', sizes: ['any'] }])
+    const icon = await fetch(`${BASE}/icon.svg`)
+    expect(icon.status).toBe(200)
+    expect(await icon.text()).toContain('<svg')
+  })
+
   it('/health не выдаёт внутренние подробности', async () => {
     const h = await (await fetch(`${BASE}/health`)).json()
     expect(Object.keys(h).sort()).toEqual(['commit', 'ready', 'status'])
