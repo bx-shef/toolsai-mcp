@@ -42,6 +42,7 @@ GitHub main ──CI──► ghcr.io/bx-shef/toolsai-mcp:sha-<коммит>
 | `deploy.env` | настройки автообновления | 600 |
 | `bin/mcp-deploy` | копия `deploy/bitrixvm/mcp-deploy.sh` (`make install`) | 755 |
 | `src/` | клон репозитория на развёрнутом коммите | |
+| `branding/` | своя иконка коннектора `icon.png` (шаг 5а), необязательно | 755 |
 | `state/` | `deployed_sha`, `previous_sha`, `failed_sha`, `paused`, `deploy.lock`, `crontab.bak` | 700 |
 | `deploy.log` | журнал выката | 600 |
 | том Docker `mcp_redis` | сессии клиентов и токены сотрудников | Docker |
@@ -143,6 +144,21 @@ claude.ai → Настройки → Коннекторы → «Добавить
 на сервере — `make audit`.
 
 Claude Code: `claude mcp add --transport http b24 https://b24.stuttgart.by/mcp-ai/mcp`, затем `/mcp` — войти.
+
+## 5а. Своя иконка коннектора (необязательно)
+
+Claude показывает иконку сервера рядом с коннектором. Своя — файл в `~/mcp/branding/`:
+`icon.png` (квадрат, 256×256, до 512 КБ), `icon.svg` или `icon.jpg`. Нет файла — встроенный синий
+квадрат с «24».
+
+```bash
+mkdir -p ~/mcp/branding && cp /путь/к/icon.png ~/mcp/branding/icon.png
+curl -sI https://<портал>/mcp-ai/icon | grep -i content-type   # image/png
+```
+
+Перезапуск не нужен. Claude запоминает иконку при подключении — переподключить коннектор.
+Каталог монтирует `docker-compose.yml` (с 2026-10-16): на сервере, поставленном раньше, —
+`make compose-diff`, `make compose-apply`.
 
 ## 6. Автообновление (bitrix)
 

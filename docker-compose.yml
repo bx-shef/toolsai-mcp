@@ -17,6 +17,10 @@ services:
     read_only: true
     tmpfs:
       - /tmp:size=16m
+    # Своя иконка коннектора: ./branding/icon.png (или .svg, .jpg). Каталога нет — Docker создаст пустой,
+    # будет встроенная иконка.
+    volumes:
+      - ./branding:/branding:ro
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
