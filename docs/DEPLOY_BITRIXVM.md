@@ -153,7 +153,7 @@ Claude показывает иконку сервера рядом с конне
 
 ```bash
 mkdir -p ~/mcp/branding && cp /путь/к/icon.png ~/mcp/branding/icon.png
-curl -sI https://<портал>/mcp-ai/icon | grep -i content-type   # image/png
+curl -s -o /dev/null -w '%{content_type}\n' https://<портал>/mcp-ai/icon   # image/png
 ```
 
 Перезапуск не нужен. Claude запоминает иконку при подключении — переподключить коннектор.
@@ -174,7 +174,7 @@ make resume          # включить, когда защита main стоит
 |---|---|
 | Что развёрнуто | `make status` |
 | Кто что вызывал | `make audit N=100` |
-| Закрыть доступ сотруднику | убрать ID из `ALLOWED_USERS`, `make up` — действует сразу |
+| Закрыть доступ сотруднику | убрать ID из `ALLOWED_USERS`, `make up` — действует сразу (`make up` пересоздаёт контейнер; Makefile до 2026-10-16 этого не делал — обновить `make self-update`) |
 | После отката выката | `make up` поднимает `:latest` — это последний **удачный** образ: скрипт перетегирует его только при успехе |
 | Выгнать всех | новый `ENCRYPTION_KEY`, `docker compose down && docker volume rm mcp_redis && make up` |
 | Новый compose из репозитория | `make compose-diff`, затем `make compose-apply` |

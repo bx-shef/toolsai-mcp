@@ -1,8 +1,12 @@
 import { loadIcon } from '../lib/icon'
 
-// GET /icon — иконка коннектора (своя из каталога branding или встроенная). Читается на каждый
+// GET и HEAD /icon (HEAD — для проверок вроде curl -I) — иконка коннектора (своя из каталога branding или встроенная). Читается на каждый
 // запрос: заменили файл — новая иконка без перезапуска (клиенты сами кешируют её при подключении).
 export default defineEventHandler(async (event) => {
+  if (event.method !== 'GET' && event.method !== 'HEAD') {
+    setResponseHeader(event, 'Allow', 'GET, HEAD')
+    throw createError({ statusCode: 405 })
+  }
   const icon = await loadIcon(process.env.BRANDING_DIR || '/branding')
   setResponseHeaders(event, {
     'Content-Type': icon.type,
