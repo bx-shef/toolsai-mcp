@@ -20,17 +20,26 @@ export function setPortalCookie(event: H3Event, input: string) {
 
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' }[c]!))
 
+/** Путь cookie входа — /oauth этого сервера (с префиксом, например /mcp-ai/oauth). */
+function oauthPath() {
+  return `${new URL(useServices().cfg.publicUrl).pathname.replace(/\/$/, '')}/oauth`
+}
+
 /** Cookie входа: только на пути /oauth этого сервера, недоступна скриптам, живёт как вход. */
 export function setLoginCookie(event: H3Event, txn: string) {
-  const { cfg } = useServices()
-  const u = new URL(cfg.publicUrl)
+  const u = new URL(useServices().cfg.publicUrl)
   setCookie(event, LOGIN_COOKIE, txn, {
     httpOnly: true,
     secure: u.protocol === 'https:',
     sameSite: 'lax', // возврат с портала — переход верхнего уровня GET: Lax cookie отдаёт
-    path: `${u.pathname.replace(/\/$/, '')}/oauth`,
+    path: oauthPath(),
     maxAge: 600,
   })
+}
+
+/** Сбросить cookie входа — на том же пути, иначе браузер её не удалит. */
+export function clearLoginCookie(event: H3Event) {
+  deleteCookie(event, LOGIN_COOKIE, { path: oauthPath() })
 }
 
 /** Экран согласия: кто просит доступ и куда уйдёт код. Без внешних ресурсов и скриптов. */

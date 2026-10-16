@@ -4,7 +4,7 @@ import { LOGIN_COOKIE } from '../../lib/oauth'
 export default defineEventHandler(async (event) => {
   try {
     const url = await useServices().oauth.callback(getQuery(event), getCookie(event, LOGIN_COOKIE))
-    deleteCookie(event, LOGIN_COOKIE)
+    clearLoginCookie(event)
     return sendRedirect(event, url, 302)
   }
   catch (e) {
