@@ -7,7 +7,7 @@ export function startFakeB24() {
   let n = 0
   const tokens = new Map() // access -> userId
   const refresh = new Map() // refresh -> userId
-  const state = { user: 7, expireNext: false, revoked: false, manifestFail: false }
+  const state = { user: 7, expireNext: false, revoked: false, manifestFail: false, admins: new Set([1]) }
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x')
     let body = ''
@@ -49,6 +49,12 @@ export function startFakeB24() {
       ] })
       if (method === 'shef.kb.search') return json(200, { result: [{ id: 1, title: `Статья про ${p.query}`, _asUser: uid }], total: 1 })
       if (method === 'shef.kb.delete') return json(200, { result: true })
+      // Права: администратор проходит любой user.access (документация user.access); коды — только U<id> и AU
+      if (method === 'user.admin') return json(200, { result: state.admins.has(uid) })
+      if (method === 'user.access') {
+        const codes = [].concat(p.ACCESS ?? [])
+        return json(200, { result: state.admins.has(uid) || codes.includes('AU') || codes.includes(`U${uid}`) })
+      }
       if (method === 'user.current') return json(200, { result: { ID: String(uid), NAME: 'Тест', LAST_NAME: 'Тестов' } })
       if (method === 'crm.deal.get' && Number(p.id) === 404) return json(400, { error: '', error_description: 'Not found' })
       if (method === 'tasks.task.get') return json(200, { result: Number(p.taskId) === 404 ? [] : { task: { id: String(p.taskId) } } })

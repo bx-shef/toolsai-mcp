@@ -15,7 +15,7 @@ export interface Config {
   b24OAuthServers: string[]
   /** Ключ 32 байта для токенов Битрикс24 в Redis. */
   encryptionKey: Buffer
-  /** Открыт ли вход сотруднику портала: ALLOWED_USERS — см. parseAllowed. */
+  /** Запасной список из .env (ALLOWED_USERS, см. parseAllowed); пусто — решают права на странице /admin. */
   isAllowed: (who: { host: string, memberId: string, userId: number }) => boolean
   /** Разрешить REST на localhost/127.0.0.1 — только когда сам сервер локальный (тесты, разработка). */
   allowLocalPortal: boolean
@@ -53,7 +53,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 
   const defaultPortal = env.B24_PORTAL_URL?.trim() ? portalHost(env.B24_PORTAL_URL) ?? undefined : undefined
   if (env.B24_PORTAL_URL?.trim() && !defaultPortal) throw new Error('B24_PORTAL_URL: portal address like https://mycompany.bitrix24.by')
-  const isAllowed = parseAllowed(required('ALLOWED_USERS'), defaultPortal)
+  // Необязателен: основной путь — права администратора портала на странице /admin (lib/access.ts).
+  const isAllowed = env.ALLOWED_USERS?.trim() ? parseAllowed(env.ALLOWED_USERS, defaultPortal) : () => false
 
   const ttl = (name: string, def: number) => {
     const v = env[name]?.trim()
@@ -104,7 +105,7 @@ export function portalHost(input: string): string | null {
 }
 
 /**
- * ALLOWED_USERS — кому открыт вход. Закрыто по умолчанию: пустой список — ошибка запуска.
+ * ALLOWED_USERS — запасной список, кому открыт вход (основной путь — /admin). Мусор — ошибка запуска.
  *   *                         — все сотрудники любого портала, где стоит приложение
  *   mycompany.bitrix24.by     — все сотрудники этого портала
  *   mycompany.bitrix24.by:7   — сотрудник 7 этого портала
