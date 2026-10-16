@@ -474,6 +474,9 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(await call('task_checklist_done', { taskId: 30, itemId: 4, done: false })).toMatchObject({ done: false })
     expect(fake.calls.at(-1).path).toMatch(/task\.checklistitem\.renew/)
     expect((await call('task_comment_add', { taskId: 30, text: 'итог' })).commentId).toBe(88)
+    // встреча: владелец — сам сотрудник, он же среди участников
+    expect(await call('calendar_event_add', { name: 'Созвон', from: '2026-10-20T10:00:00', to: '2026-10-20T11:00:00', attendees: [7] })).toEqual({ eventId: 9 })
+    expect(fake.calls.at(-1).body).toMatchObject({ type: 'user', ownerId: 1, attendees: [1, 7], host: 1, timezone_from: 'Europe/Minsk' })
     const empty = await mcp(t.access_token, 'tools/call', { name: 'task_update', arguments: { taskId: 30 } })
     expect(empty.body.result.isError).toBe(true)
     // журнал — без значений

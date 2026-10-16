@@ -67,6 +67,7 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
       if (method === 'task.checklistitem.complete' || method === 'task.checklistitem.renew') return json(200, { result: true })
       if (method === 'task.commentitem.add') return json(200, { result: 88 })
       if (method === 'task.elapseditem.add') return json(200, { result: Number(p.ARFIELDS.SECONDS) === 1800 ? 5 : 0 })
+      if (method === 'calendar.event.add') return json(200, { result: p.attendees?.includes(uid) && p.is_meeting === 'Y' ? 9 : 8 })
       if (method === 'calendar.event.get') return json(200, { result: [{ ID: '1', NAME: 'Планёрка', DATE_FROM: p.from, OWNER_ID: String(p.ownerId), CAL_TYPE: p.type }] })
       if (method === 'calendar.accessibility.get') return json(200, { result: Object.fromEntries(p.users.map(u => [u, []])) })
       if (method === 'task.checklistitem.getlist') return json(200, { result: [{ ID: '2', TASK_ID: String(p.TASKID), PARENT_ID: 0, TITLE: 'BX_CHECKLIST_1', IS_COMPLETE: 'N' }] })
