@@ -431,4 +431,24 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect((await login()).back.searchParams.get('error')).toBe('access_denied')
     fake.state.user = 7
   })
+
+  it('календарь и задачи: события, занятость, чек-лист, время, комментарии из чата и форума', async () => {
+    fake.state.user = 1 // администратор — проходит без настроек
+    const t = await fullToken()
+    const call = async (name: string, args: object) => {
+      const r = await mcp(t.access_token, 'tools/call', { name, arguments: args })
+      expect(r.body.result.isError, JSON.stringify(r.body)).toBeFalsy()
+      return JSON.parse(r.body.result.content[0].text)
+    }
+    // свой календарь: ownerId из user.current
+    expect((await call('calendar_events', { from: '2026-10-01', to: '2026-10-31' }))[0]).toMatchObject({ OWNER_ID: '1', CAL_TYPE: 'user' })
+    expect((await mcp(t.access_token, 'tools/call', { name: 'calendar_events', arguments: { from: '1.10.2026', to: '2026-10-31' } })).body.result.isError).toBe(true)
+    expect(await call('calendar_busy', { users: [1, 7], from: '2026-10-16', to: '2026-10-20' })).toEqual({ 1: [], 7: [] })
+    expect((await call('task_checklist', { taskId: 18 }))[0].TASK_ID).toBe('18')
+    expect((await call('task_elapsed', { taskId: 18 })).totalSeconds).toBe(900)
+    const chat = await call('task_comments', { taskId: 18 })
+    expect(chat).toMatchObject({ source: 'chat', messages: [{ text: 'готово', system: false }, { system: true }] })
+    expect((await call('task_comments', { taskId: 5 })).source).toBe('forum')
+    fake.state.user = 7
+  })
 })

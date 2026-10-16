@@ -110,7 +110,8 @@ export function annotationsFor(kind: ToolKind) {
 }
 
 /** Имена встроенных инструментов (server/mcp/tools): модуль их не перекрывает. Сверку держит tests/repo.test.ts. */
-export const BUILTIN_TOOLS = new Set(['user_current', 'crm_activity_list', 'crm_company_get', 'crm_contact_get', 'crm_deal_get', 'crm_deal_list', 'crm_lead_get', 'task_get', 'task_list'])
+export const BUILTIN_TOOLS = new Set(['user_current', 'crm_activity_list', 'crm_company_get', 'crm_contact_get', 'crm_deal_get', 'crm_deal_list', 'crm_lead_get', 'task_get', 'task_list',
+  'calendar_events', 'calendar_busy', 'task_checklist', 'task_elapsed', 'task_results', 'task_comments'])
 
 /** Ключи, которые модель может передать методу: только объявленные в схеме, без служебных REST. */
 export function pickArgs(input: Record<string, unknown>, args: Record<string, unknown> | undefined): Record<string, unknown> {

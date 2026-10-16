@@ -123,6 +123,9 @@ sequenceDiagram
 | `crm_deal_get`, `crm_lead_get`, `crm_contact_get`, `crm_company_get` | `crm.<сущность>.get` |
 | `crm_activity_list` | `crm.activity.list` по владельцу, можно только звонки |
 | `task_list`, `task_get` | `tasks.task.list`, `tasks.task.get` |
+| `task_checklist`, `task_elapsed`, `task_results` | `task.checklistitem.getlist`, `task.elapseditem.getlist`, `tasks.task.result.list` |
+| `task_comments` | `tasks.task.get` → чат задачи `im.dialog.messages.get` (новые задачи) или `task.commentitem.getlist` (старые) |
+| `calendar_events`, `calendar_busy` | `calendar.event.get`, `calendar.accessibility.get` |
 
 Набор повторяет то, что Битрикс24 сам даёт Марте с разметкой «читает» (`bx-shef/toolsai`,
 `docs/private/mcp-box.md` §1.2), но поверх REST.

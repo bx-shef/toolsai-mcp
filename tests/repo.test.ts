@@ -2,6 +2,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { BUILTIN_TOOLS } from '../server/lib/manifest'
 
 const md = (dir: string): string[] => readdirSync(dir).flatMap((f) => {
   const p = join(dir, f)
@@ -33,6 +34,9 @@ describe('repo', () => {
 
   it('все инструменты — только чтение (запись — шаг 5 плана, отдельным PR)', () => {
     const dir = 'server/mcp/tools'
+    // Имена встроенных — в BUILTIN_TOOLS: иначе модуль портала перекрыл бы инструмент своим
+    const names = readdirSync(dir).map(f => /name: '([a-z_]+)'/.exec(readFileSync(join(dir, f), 'utf8'))![1])
+    expect(new Set(names)).toEqual(BUILTIN_TOOLS)
     for (const f of readdirSync(dir)) expect(readFileSync(join(dir, f), 'utf8'), f).toMatch(/annotations: READ_ONLY/)
   })
   it('BUILTIN_TOOLS совпадает с файлами инструментов — модуль не перекроет встроенный', async () => {
