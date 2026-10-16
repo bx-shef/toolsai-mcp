@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { B24Error, ReloginRequired } from '../lib/b24'
-import { annotationsFor, BUILTIN_TOOLS, parseManifest, pickArgs, type ModuleTool } from '../lib/manifest'
+import { annotationsFor, BUILTIN_TOOLS, parseManifest, WRITE_TOOLS, pickArgs, type ModuleTool } from '../lib/manifest'
 import type { Session } from '../lib/oauth'
 
 // Инструменты модулей портала. На каждый запрос к /mcp toolkit строит свой McpServer — в этот момент
@@ -15,6 +15,9 @@ const ABSENT_CACHE_SEC = 60
 const MANIFEST_TIMEOUT_MS = 3000
 const ABSENT = new Set(['ERROR_METHOD_NOT_FOUND', 'insufficient_scope', 'ACCESS_DENIED', 'NOT_FOUND'])
 
+/** Имена встроенных инструментов, чтения и записи: модуль их не перекроет. */
+const RESERVED = new Set<string>([...BUILTIN_TOOLS, ...WRITE_TOOLS])
+
 interface Ready { tool: ModuleTool, input: z.ZodType }
 const inflight = new Map<string, Promise<ModuleTool[]>>()
 
@@ -22,7 +25,7 @@ async function load(session: Session, method: string, key: string): Promise<Modu
   const { b24, store } = useServices()
   try {
     const res = await b24.call(session, method, {})
-    const parsed = parseManifest(res.result, method, BUILTIN_TOOLS)
+    const parsed = parseManifest(res.result, method, RESERVED)
     // Схема, которую zod не разбирает, отсеивается здесь, а не на каждом запросе.
     const tools = parsed.tools.filter((t) => {
       try {
@@ -81,7 +84,7 @@ export default defineNitroPlugin((nitroApp) => {
     const { access } = useServices()
     const [manifests, writer] = await Promise.all([access.manifests(session), access.canWrite(session)])
     const lists = await Promise.all(manifests.map(m => manifestFor(session, m).then(tools => ({ m, tools }))))
-    const taken = new Set(BUILTIN_TOOLS)
+    const taken = new Set(RESERVED)
     for (const { m: manifest, tools } of lists) {
       for (const tool of tools) {
         // Запись и удаление — только тем, кому открыта запись (/admin или WRITE_USERS); остальным инструмента нет.
