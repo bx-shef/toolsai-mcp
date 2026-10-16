@@ -1,0 +1,65 @@
+# Стенд для проверок toolsai-mcp в Docker. Не для боевого портала: ключи тестовые, всё на localhost.
+#
+#   cd stand && docker compose up -d --build && node try.mjs
+#
+# Профиль по умолчанию — сервер из исходников + Redis + подставной Битрикс24 (tests/fake-b24.mjs):
+# весь путь MCP-клиента и страница /admin без интернета и без настоящего портала.
+# Профиль box — коробка Битрикс24 (apache + mod_php 8.2 + MySQL 8.0, как стенд shef.toolsai):
+# для проверки своих модулей и манифестов через вебхук (npm run smoke). Порядок — docs/STAND.md.
+name: mcp-stand
+
+services:
+  # Подставной портал и OAuth-сервер. mcp живёт в его сетевом пространстве: «localhost» у них общий,
+  # поэтому портал на http://localhost:8090 сервер принимает (локальный портал — только локальному серверу).
+  fake:
+    image: node:22.22.0-bookworm-slim
+    command: ["node", "/stand/fake.mjs"]
+    volumes:
+      - ../tests/fake-b24.mjs:/stand/fake-b24.mjs:ro
+      - ./fake.mjs:/stand/fake.mjs:ro
+    ports:
+      - "127.0.0.1:${MCP_PORT:-3000}:3000"
+      - "127.0.0.1:${FAKE_PORT:-8090}:8090"
+
+  mcp:
+    build: ..
+    network_mode: service:fake
+    depends_on: [fake, redis]
+    environment:
+      PUBLIC_URL: http://localhost:3000
+      B24_OAUTH_SERVERS: http://localhost:8090
+      B24_CLIENT_ID: local.test
+      B24_CLIENT_SECRET: sec
+      # Тестовый ключ стенда, не для боевого сервера
+      ENCRYPTION_KEY: c3RhbmQtb25seS1rZXktMzItYnl0ZXMtbG9uZyEhISE=
+      REDIS_URL: redis://redis:6379
+      BRANDING_DIR: /nonexistent
+
+  redis:
+    image: redis:7.4.6-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+  portal:
+    profiles: [box]
+    build: ./php
+    ports:
+      - "127.0.0.1:${PORTAL_PORT:-8080}:80"
+    volumes:
+      - ./www:/var/www/html
+      - ./sh_log:/var/www/sh_log
+    depends_on: [db]
+
+  db:
+    profiles: [box]
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: bitrix
+      MYSQL_USER: bitrix
+      MYSQL_PASSWORD: bitrix
+    command: [--sql-mode=, --innodb-strict-mode=OFF, --character-set-server=utf8mb4, --collation-server=utf8mb4_unicode_ci, --transaction-isolation=READ-COMMITTED, --max-allowed-packet=64M]
+    volumes:
+      - db:/var/lib/mysql
+
+volumes:
+  db:
