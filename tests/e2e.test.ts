@@ -345,6 +345,9 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(icon.status).toBe(200)
     expect(icon.headers.get('content-type')).toContain('image/svg+xml')
     expect(await icon.text()).toContain('<svg')
+    // HEAD — тот же тип (проверка curl -I), прочие методы — 405
+    expect((await fetch(`${BASE}/icon`, { method: 'HEAD' })).headers.get('content-type')).toContain('image/svg+xml')
+    expect((await fetch(`${BASE}/icon`, { method: 'POST' })).status).toBe(405)
   })
 
   it('/health не выдаёт внутренние подробности', async () => {

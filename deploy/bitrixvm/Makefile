@@ -60,8 +60,9 @@ pause: ## остановить автообновление
 resume: ## включить автообновление
 	@rm -f state/paused && echo "автообновление включено"
 
-up: ## применить правку .env (перезапуск контейнеров)
+up: ## применить правку .env (пересоздать контейнер mcp — иначе Docker не видит новый .env)
 	docker compose up -d
+	docker compose up -d --force-recreate mcp
 
 logs: ## журнал сервера
 	@docker logs --tail=30 mcp 2>&1
