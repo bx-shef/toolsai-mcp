@@ -66,6 +66,9 @@ async function startLogin(reg: any, redirect = REDIRECT) {
   expect(html).toContain('test')
   expect(html).toContain(new URL(redirect).host)
   expect(r.headers.get('x-frame-options')).toBe('DENY')
+  // form-action ломает цепочку редиректов в Chrome: портал → callback → redirect_uri клиента (2026-10-16)
+  expect(r.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
+  expect(r.headers.get('content-security-policy')).not.toContain('form-action')
   const txn = /name="txn" value="([^"]+)"/.exec(html)![1]!
   const setCookie = r.headers.get('set-cookie')!
   expect(setCookie).toMatch(/HttpOnly/i)
@@ -102,6 +105,8 @@ async function login(redirect = REDIRECT, code?: string) {
   // портал впускает сотрудника и возвращает на наш callback — в том же браузере, с cookie
   const r2 = await portalReturn(portal.searchParams.get('state')!, cookie, code)
   expect(r2.status).toBe(302)
+  // cookie входа сбрасывается на том же пути, где была поставлена (иначе браузер её не удалит)
+  expect(r2.headers.get('set-cookie')).toMatch(/mcp_login=;.*Path=\/oauth/i)
   const back = new URL(r2.headers.get('location')!)
   return { reg, verifier, back }
 }
