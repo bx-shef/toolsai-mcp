@@ -142,3 +142,20 @@ describe('manifest', async () => {
     expect(loadConfig({ ...env, WRITE_USERS: '1' }).canWrite({ host: 'b24.example', memberId: 'm0123456789', userId: 1 })).toBe(true)
   })
 })
+
+describe('icon', () => {
+  it('своя из каталога — первый найденный файл; нет или слишком большой — встроенная', async () => {
+    const { mkdtempSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const { loadIcon, DEFAULT_ICON } = await import('../server/lib/icon')
+    const dir = mkdtempSync(join(tmpdir(), 'icon-'))
+    expect(await loadIcon(dir)).toBe(DEFAULT_ICON)
+    writeFileSync(join(dir, 'icon.svg'), '<svg/>')
+    expect((await loadIcon(dir)).type).toBe('image/svg+xml')
+    writeFileSync(join(dir, 'icon.png'), Buffer.from([0x89, 0x50]))
+    expect((await loadIcon(dir)).type).toBe('image/png')
+    writeFileSync(join(dir, 'icon.png'), Buffer.alloc(600 * 1024))
+    expect((await loadIcon(dir)).type).toBe('image/svg+xml')
+  })
+})

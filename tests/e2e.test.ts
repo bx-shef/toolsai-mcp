@@ -27,6 +27,7 @@ function start(extraEnv: Record<string, string> = {}) {
       ENCRYPTION_KEY: randomBytes(32).toString('base64'),
       ALLOWED_USERS: '*',
       MODULE_MANIFESTS: 'shef.mcp.tools',
+      BRANDING_DIR: '/nonexistent-branding',
       ...extraEnv,
     },
   })
@@ -338,9 +339,11 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
   it('иконка коннектора: в initialize полный адрес, файл отдаётся', async () => {
     const t = await fullToken()
     const init = await mcp(t.access_token, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '0' } })
-    expect(init.body.result.serverInfo.icons).toEqual([{ src: `${BASE}/icon.svg`, mimeType: 'image/svg+xml', sizes: ['any'] }])
-    const icon = await fetch(`${BASE}/icon.svg`)
+    // своей иконки в тесте нет (BRANDING_DIR — пустой каталог) — встроенная
+    expect(init.body.result.serverInfo.icons).toEqual([{ src: `${BASE}/icon`, mimeType: 'image/svg+xml', sizes: ['any'] }])
+    const icon = await fetch(`${BASE}/icon`)
     expect(icon.status).toBe(200)
+    expect(icon.headers.get('content-type')).toContain('image/svg+xml')
     expect(await icon.text()).toContain('<svg')
   })
 
