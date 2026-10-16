@@ -168,6 +168,61 @@ make deploy          # выкатить текущий main руками
 make resume          # включить, когда защита main стоит
 ```
 
+## Свой домен вместо пути на портале
+
+Сервер можно поставить на свой домен третьего уровня, например `mcp-bel.bx-shef.by`, — как
+импорт из клиент-банка (`bx-shef/client-bank-alfa-by`, `docs/DEPLOY_BITRIXVM.md`). Так удобно,
+когда на машине уже живут другие приложения со своими доменами: у каждого свой сайт, свой
+сертификат и своя вставка nginx. MCP с ними не пересекается: порт `127.0.0.1:3100`, контейнеры
+`mcp`/`mcp-redis`, сеть `mcp_default`, зоны nginx `mcp_ai*`; `make install` в crontab трогает только
+свои строки.
+
+Отличия от шагов выше:
+
+1. **DNS и сайт (владелец).** A-запись домена на эту машину. Сайт и сертификат — **штатным меню**
+   bitrix-env («Добавить сайт», затем выпуск сертификата): меню создаёт конфиги nginx, каталог
+   `/etc/nginx/bx/site_settings/<домен>/` и docroot `/home/bitrix/ext_www/<домен>`.
+2. **Приложение на портале** — путь обработчика `https://<домен>/oauth/callback` (без `/mcp-ai`).
+3. **`.env`** — `PUBLIC_URL=https://<домен>`; портал по умолчанию — `B24_PORTAL_URL=https://<портал>`.
+4. **nginx (root)** — вместо `site_settings/default/mcp-ai.conf`:
+
+```bash
+DOMAIN=mcp-bel.bx-shef.by        # ← свой домен
+cat > /etc/nginx/bx/settings/mcp-ai.conf <<'EOF'
+limit_req_zone  $binary_remote_addr zone=mcp_ai:10m rate=10r/s;
+limit_conn_zone $binary_remote_addr zone=mcp_ai_conn:10m;
+EOF
+install -m 644 /home/bitrix/mcp/src/deploy/bitrixvm/nginx-mcp-domain.conf \
+  "/etc/nginx/bx/site_settings/$DOMAIN/00-mcp-proxy.conf" && nginx -t && systemctl reload nginx
+```
+
+   Файл зон `bx/settings/mcp-ai.conf` — один на машину: если MCP уже стоит на этой машине на
+   пути портала, второй раз не создавать (дубль зоны — отказ `nginx -t`).
+
+5. **Docroot (root)** — заглушка вместо битриксового `index.php`: сюда запрос попадает, только если
+   сломалось проксирование, и отвечает `503`:
+
+```bash
+DOMAIN=mcp-bel.bx-shef.by        # ← свой домен
+D=/home/bitrix/ext_www/$DOMAIN
+cp -a "$D/index.php" "$D/index.php.orig-$(date +%F)"
+install -m 644 -o bitrix -g bitrix /home/bitrix/mcp/src/deploy/bitrixvm/docroot/index.php "$D/index.php"
+touch "$D/.htsecure" && chown bitrix:bitrix "$D/.htsecure"   # http → https; только когда сертификат уже есть
+```
+
+6. **Проверка снаружи:**
+
+```bash
+curl -s https://<домен>/health; echo
+curl -s https://<домен>/.well-known/oauth-authorization-server | head -c 120; echo
+curl -si -X POST https://<домен>/mcp | grep -iE '^HTTP|www-authenticate'
+```
+
+   Коннектор в Claude — `https://<домен>/mcp`.
+
+После операций меню bitrix-env (перевыпуск сертификата, правка сайта) — `nginx -t` и проверка
+снаружи: каталог `site_settings` меню не трогает, но проверить дешевле, чем узнать от сотрудника.
+
 ## Обслуживание
 
 | Задача | Команда |
