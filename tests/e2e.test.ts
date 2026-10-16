@@ -484,4 +484,29 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(logs).not.toContain('Стало')
     fake.state.user = 7
   })
+
+  it('база знаний: только REST v3 — базы, оглавление, поиск, статья; запись — с правом записи', async () => {
+    fake.state.user = 1
+    const t = await fullToken()
+    const call = async (name: string, args: object) => {
+      const r = await mcp(t.access_token, 'tools/call', { name, arguments: args })
+      return { err: r.body.result.isError, data: r.body.result.isError ? r.body.result.content[0].text : JSON.parse(r.body.result.content[0].text) }
+    }
+    expect((await call('note_bases', {})).data).toEqual([{ id: 1, name: 'Моя компания', policyLevel: 'portal' }])
+    expect(fake.calls.filter((c: any) => c.path.startsWith('/rest/')).at(-1).path).toBe('/rest/api/note.collection.list')
+    expect((await call('note_tree', { collectionId: 1 })).data).toEqual({ items: [{ id: 3, title: 'Отпуск', children: [{ id: 4, title: 'Заявление' }] }], truncated: false })
+    expect((await call('note_search', { query: 'отпуск' })).data.items[0]).toEqual({ id: 3, collectionId: 1, title: 'Отпуск', snippet: 'Как оформить отпуск' })
+    expect((await call('note_search', { query: 'ab' })).err).toBe(true) // от 3 символов — до портала
+    expect((await call('note_get', { id: 3 })).data).toMatchObject({ title: 'Отпуск', markdown: '# Отпуск\nТекст', archived: false })
+    const missing = await call('note_get', { id: 99 })
+    expect(missing.err).toBe(true)
+    expect(missing.data).toContain('Не найдено')
+    expect((await call('note_add', { collectionId: 1, title: 'Новая', markdown: 'x' })).data).toEqual({ id: 5, collectionId: 1, title: 'Новая' })
+    expect((await call('note_update', { id: 3, markdown: 'короче' })).data).toEqual({ id: 3, changes: { markdown: { было: '14 символов', стало: '6 символов' } } })
+    fake.state.user = 7
+    const plain = await fullToken()
+    const names = (await mcp(plain.access_token, 'tools/list')).body.result.tools.map((x: any) => x.name)
+    expect(names).toContain('note_search')
+    expect(names).not.toContain('note_add')
+  })
 })

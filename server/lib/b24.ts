@@ -251,7 +251,17 @@ export async function assertPublicHost(host: string, resolve: Resolve = dnsResol
   }
 }
 
+/**
+ * Методы, которых в REST v2 нет — только v3 (/rest/api/). База знаний (note.*) — замер 2026-10-16:
+ * по v2 «Method not found», по v3 — работает.
+ */
+export function isV3(method: string): boolean {
+  return method.startsWith('note.')
+}
+
 function restError(code: string, description: string, status = 0): B24Error {
+  // v3: «записи нет» — своим кодом исключения (замер 2026-10-16)
+  if (code === 'BITRIX_REST_V3_EXCEPTION_ENTITYNOTFOUNDEXCEPTION') code = 'NOT_FOUND'
   // «Не найдено» портал отдаёт с ПУСТЫМ кодом (`{"error":"","error_description":"Not found"}`,
   // замер 2026-10-13), а SDK подставляет вместо него код axios ERR_BAD_REQUEST — модель не отличит
   // отсутствие записи от своей ошибки в запросе.
@@ -297,6 +307,15 @@ export function sdkTransport(cfg: Config): RestTransport {
       }
     })
     try {
+      if (isV3(method)) {
+        // v3: постраничность курсором (nextCursor в result), total нет
+        const res3 = await b24.actions.v3.call.make({ method, params })
+        if (!res3.isSuccess) {
+          const err = res3.getErrors().next().value as { code?: string, message?: string, status?: number } | undefined
+          throw restError(String(err?.code ?? 'error'), String(err?.message ?? ''), err?.status ?? 0)
+        }
+        return { result: (res3.getData() as { result?: unknown } | undefined)?.result }
+      }
       const res = await b24.actions.v2.call.make({ method, params })
       if (!res.isSuccess) {
         const err = res.getErrors().next().value as { code?: string, message?: string, status?: number } | undefined
@@ -325,13 +344,15 @@ export function sdkTransport(cfg: Config): RestTransport {
 /** Транспорт на fetch — для тестов: те же правила, без SDK и без сети. */
 export function fetchTransport(_cfg: Config, fetchFn: Fetch): RestTransport {
   const once = async (endpoint: string, access: string, method: string, params: Record<string, unknown>) => {
-    const res = await fetchFn(`${endpoint}${method}.json`, {
+    const res = await fetchFn(isV3(method) ? `${endpoint}api/${method}` : `${endpoint}${method}.json`, {
       method: 'POST',
       redirect: 'manual',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...params, auth: access }),
     })
     const body = await res.json().catch(() => ({})) as Record<string, any>
+    // v3 отдаёт ошибку объектом {code, message}
+    if (body.error && typeof body.error === 'object') throw restError(String(body.error.code), String(body.error.message || ''), res.status)
     if (body.error || !res.ok) throw restError(String(body.error || `http_${res.status}`), String(body.error_description || ''), res.status)
     return { result: body.result, next: body.next, total: body.total }
   }
