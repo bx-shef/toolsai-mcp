@@ -93,7 +93,7 @@ nano .env
   портал по умолчанию: подставится в поле входа, голые ID в `ALLOWED_USERS` относятся к нему;
 - `B24_CLIENT_ID`, `B24_CLIENT_SECRET` — из локального приложения;
 - `ENCRYPTION_KEY` — `openssl rand -base64 32` (сменить потом = все входят заново);
-- `ALLOWED_USERS=1` (или `b24.stuttgart.by:1`) — пилот на одном сотруднике (шаг 6 плана). Обязательно: пусто — сервер не стартует, всем — `*`;
+- `ALLOWED_USERS` — необязателен: доступ сотрудникам открывает администратор портала на `<PUBLIC_URL>/admin` ([`ACCESS.md`](ACCESS.md)); без списка — только администраторы;
 - `REDIS_PASSWORD` — `openssl rand -hex 24`.
 
 ## 3. Первый запуск (bitrix)
@@ -229,7 +229,7 @@ curl -si -X POST https://<домен>/mcp | grep -iE '^HTTP|www-authenticate'
 |---|---|
 | Что развёрнуто | `make status` |
 | Кто что вызывал | `make audit N=100` |
-| Закрыть доступ сотруднику | убрать ID из `ALLOWED_USERS`, `make up` — действует сразу (`make up` пересоздаёт контейнер; Makefile до 2026-10-16 этого не делал — обновить `make self-update`) |
+| Закрыть доступ сотруднику | убрать код на `<PUBLIC_URL>/admin` (до 5 минут) или ID из `ALLOWED_USERS`, `make up` — действует сразу (`make up` пересоздаёт контейнер; Makefile до 2026-10-16 этого не делал — обновить `make self-update`) |
 | После отката выката | `make up` поднимает `:latest` — это последний **удачный** образ: скрипт перетегирует его только при успехе |
 | Выгнать всех | новый `ENCRYPTION_KEY`, `docker compose down && docker volume rm mcp_redis && make up` |
 | Новый compose из репозитория | `make compose-diff`, затем `make compose-apply` |

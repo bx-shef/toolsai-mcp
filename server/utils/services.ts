@@ -1,6 +1,8 @@
 import { createStorage } from 'unstorage'
 import memoryDriver from 'unstorage/drivers/memory'
 import redisDriver from 'unstorage/drivers/redis'
+import { Access } from '../lib/access'
+import { AdminAuth } from '../lib/admin'
 import { B24 } from '../lib/b24'
 import { loadConfig, type Config } from '../lib/config'
 import { OAuthServer } from '../lib/oauth'
@@ -9,7 +11,7 @@ import { Store } from '../lib/store'
 // Один набор служб на процесс. REDIS_URL пуст — память (только локально:
 // входы теряются при перезапуске).
 
-let services: { cfg: Config, store: Store, b24: B24, oauth: OAuthServer } | undefined
+let services: { cfg: Config, store: Store, b24: B24, access: Access, admin: AdminAuth, oauth: OAuthServer } | undefined
 
 export function useServices() {
   if (!services) {
@@ -19,7 +21,8 @@ export function useServices() {
       : memoryDriver()
     const store = new Store(createStorage({ driver }))
     const b24 = new B24(cfg, store)
-    services = { cfg, store, b24, oauth: new OAuthServer(cfg, store, b24) }
+    const access = new Access(cfg, store, b24)
+    services = { cfg, store, b24, access, admin: new AdminAuth(store, b24, access), oauth: new OAuthServer(cfg, store, b24, access) }
   }
   return services
 }

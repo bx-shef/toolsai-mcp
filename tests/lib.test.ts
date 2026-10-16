@@ -38,8 +38,8 @@ describe('config', () => {
     for (const ip of ['10.1.1.1', '127.0.0.1', '169.254.169.254', '192.168.0.1', '172.20.0.1', '::1', 'fd00::1', 'fe80::1', '::ffff:10.0.0.1']) expect(isPrivateIp(ip), ip).toBe(true)
     for (const ip of ['93.184.216.34', '8.8.8.8', '2a00:1450::1', '::ffff:8.8.8.8']) expect(isPrivateIp(ip), ip).toBe(false)
   })
-  it('пустой ALLOWED_USERS — отказ запуска (закрыто по умолчанию)', () => {
-    expect(() => loadConfig({ ...env, ALLOWED_USERS: '' })).toThrow(/ALLOWED_USERS/)
+  it('ALLOWED_USERS не задан — из .env никого (решают права /admin); пустые запятые — ошибка', () => {
+    expect(loadConfig({ ...env, ALLOWED_USERS: '' }).isAllowed({ host: 'b24.example', memberId: 'm0123456789', userId: 1 })).toBe(false)
     expect(() => loadConfig({ ...env, ALLOWED_USERS: ' , ' })).toThrow(/ALLOWED_USERS/)
   })
   it('сроки: опечатка — отказ запуска, а не «вечно истёкшие» токены', () => {

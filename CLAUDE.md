@@ -29,6 +29,7 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 | `server/middleware/00.auth.ts` | `/.well-known/*` (метаданные) и проверка Bearer на `/mcp` → `event.context.session` |
 | `server/routes/oauth/` | `register`, `authorize` (экран согласия + cookie входа, `server/utils/consent.ts`), `consent`, `callback` (возврат с портала), `token` |
 | `server/mcp/tools/` | инструменты MCP; REST — только через `b24Call()` (`server/utils/b24call.ts`): сотрудник из сессии, журнал |
+| `server/lib/access.ts`, `server/lib/admin.ts`, `server/routes/admin/` | права портала: страница `/admin` для администратора Битрикс24, коды доступа через `user.access`, настройки в Redis по `member_id` — `docs/ACCESS.md` |
 | `server/lib/manifest.ts`, `server/plugins/module-tools.ts` | инструменты модулей портала из манифеста (`MODULE_MANIFESTS`), запись — только `WRITE_USERS` — `docs/MODULE_TOOLS.md` |
 | `server/utils/services.ts` | синглтоны: конфиг, Redis/память, `B24`, `OAuthServer` |
 | `tests/` | `e2e.test.ts` — весь путь на собранном сервере против `fake-b24.mjs` (в CI без сборки падает); `oauth.test.ts` — защитные проверки OAuth и `B24` с подставным временем и fetch; `lib.test.ts`; `repo.test.ts` — гарды |

@@ -78,13 +78,14 @@ export default defineNitroPlugin((nitroApp) => {
   nitroApp.hooks.hook('mcp:server:created', async ({ server, event }) => {
     const session = event.context.session as Session | undefined
     if (!session) return
-    const { cfg } = useServices()
-    const lists = await Promise.all(cfg.moduleManifests.map(m => manifestFor(session, m).then(tools => ({ m, tools }))))
+    const { access } = useServices()
+    const [manifests, writer] = await Promise.all([access.manifests(session), access.canWrite(session)])
+    const lists = await Promise.all(manifests.map(m => manifestFor(session, m).then(tools => ({ m, tools }))))
     const taken = new Set(BUILTIN_TOOLS)
     for (const { m: manifest, tools } of lists) {
       for (const tool of tools) {
-        // Запись и удаление — только тем, кому открыто WRITE_USERS; остальным инструмента просто нет.
-        if (tool.kind !== 'read' && !cfg.canWrite(session)) continue
+        // Запись и удаление — только тем, кому открыта запись (/admin или WRITE_USERS); остальным инструмента нет.
+        if (tool.kind !== 'read' && !writer) continue
         // Одно имя в двух модулях — берём первый, второй в журнал: дубль уронил бы весь /mcp.
         if (taken.has(tool.name)) {
           console.warn(JSON.stringify({ kind: 'manifest', portal: session.host, method: manifest, errors: [`${tool.name}: имя уже занято другим модулем`] }))

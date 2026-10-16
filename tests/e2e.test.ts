@@ -374,4 +374,61 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(back.searchParams.get('error')).toBe('access_denied')
     expect(back.searchParams.get('code')).toBeNull()
   })
+
+  it('/admin: администратор портала открывает доступ кодами Битрикс24 — без .env', async () => {
+    app.kill()
+    await new Promise(r => setTimeout(r, 300))
+    start({ ALLOWED_USERS: '', MODULE_MANIFESTS: '' })
+    await waitUp()
+    // ничего не настроено: сотрудник 7 не администратор — отказ
+    fake.state.user = 7
+    expect((await login()).back.searchParams.get('error')).toBe('access_denied')
+
+    /** Вход на страницу настроек: форма → портал → возврат → cookie сессии. */
+    const adminLogin = async () => {
+      const r = await fetch(`${BASE}/admin/login`, { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'portal=test.bitrix24.by' })
+      expect(r.status).toBe(303)
+      const state = new URL(r.headers.get('location')!).searchParams.get('state')!
+      expect(state.startsWith('adm.')).toBe(true)
+      const cookie = r.headers.getSetCookie().find(c => c.startsWith('mcp_admin_login='))!.split(';')[0]!
+      return portalReturn(state, cookie)
+    }
+    // не администратор на настройки не попадает
+    const denied = await adminLogin()
+    expect(denied.status).toBe(403)
+    expect(await denied.text()).toContain('только администратору')
+
+    fake.state.user = 1
+    const ok = await adminLogin()
+    expect(ok.status).toBe(302)
+    expect(ok.headers.get('location')).toBe(`${BASE}/admin`)
+    const sess = ok.headers.getSetCookie().find(c => c.startsWith('mcp_admin='))!
+    expect(sess).toMatch(/HttpOnly/i)
+    expect(sess).toMatch(/Path=\/admin/i)
+    const cookie = sess.split(';')[0]!
+    const page = await (await fetch(`${BASE}/admin`, { headers: { cookie } })).text()
+    expect(page).toContain('Портал <b>localhost</b>') // портал — из ответа OAuth-сервера, не из формы
+    const csrf = /name="csrf" value="([^"]+)"/.exec(page)![1]!
+    const save = (form: Record<string, string>) => fetch(`${BASE}/admin/save`, { method: 'POST', headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(form) })
+    // чужая форма без csrf — отказ; мусор вместо кодов — отказ, ничего не сохранено
+    expect((await save({ csrf: 'x', use: 'U7' })).status).toBe(403)
+    expect((await save({ csrf, use: 'ivanov' })).status).toBe(400)
+    const saved = await save({ csrf, use: 'U7', write: '', manifests: 'shef.mcp.tools' })
+    expect(saved.status).toBe(200)
+    expect(await saved.text()).toContain('Сохранено')
+    expect(logs).toMatch(/"kind":"admin".*"action":"settings","use":1,"write":0,"manifests":1/)
+
+    // сотрудник 7 входит; модули — из настроек, запись — только администраторам
+    fake.state.user = 7
+    const t = await fullToken()
+    const tools = Object.fromEntries((await mcp(t.access_token, 'tools/list')).body.result.tools.map((x: any) => [x.name, x]))
+    expect(tools.kb_search).toBeDefined()
+    expect(tools.kb_delete).toBeUndefined()
+    const acc = fake.calls.filter((c: any) => c.path.startsWith('/rest/user.access')).at(-1)
+    expect(acc.body.ACCESS).toEqual(['U7'])
+    // сотрудник 8 не в кодах
+    fake.state.user = 8
+    expect((await login()).back.searchParams.get('error')).toBe('access_denied')
+    fake.state.user = 7
+  })
 })
