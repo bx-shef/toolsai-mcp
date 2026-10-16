@@ -20,8 +20,8 @@ const log = []
 const note = (...a) => { const s = hide(a.join(' ')); log.push(s); console.log(s) }
 
 // Ошибки fetch несут адрес (с секретом вебхука) в cause — наружу отдаём без него.
-async function post(method, params) {
-  try { return await fetch(HOOK + method + '.json', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(params) }) }
+async function post(method, params, v3 = false) {
+  try { return await fetch(v3 ? HOOK.replace('/rest/', '/rest/api/') + method : HOOK + method + '.json', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(params) }) }
   catch { throw new Error(`${method}: network error`) }
 }
 async function hook(method, params = {}) {
@@ -49,15 +49,17 @@ const proxy = createServer(async (req, res) => {
   if (url.pathname.startsWith('/rest/')) {
     const ct = req.headers['content-type'] || ''
     const p = ct.includes('json') ? JSON.parse(raw || '{}') : Object.fromEntries(new URLSearchParams(raw))
-    const auth = p.auth ?? url.searchParams.get('auth')
+    const auth = p.auth ?? url.searchParams.get('auth') ?? String(req.headers.authorization ?? '').replace(/^Bearer\s+/i, '')
     delete p.auth
-    const method = url.pathname.slice(6).replace(/\.json$/, '')
-    const rec = { kind: 'rest', method, contentType: ct.split(';')[0], params: p, t0: Date.now() }
+    // REST v3 (/rest/api/) — база знаний note.*
+    const v3 = url.pathname.startsWith('/rest/api/')
+    const method = url.pathname.slice(6).replace(/\.json$/, '').replace(/^api\//, '')
+    const rec = { kind: 'rest', v3, method, contentType: ct.split(';')[0], params: p, t0: Date.now() }
     portalCalls.push(rec)
     if (!tokens.has(auth)) { rec.status = 401; return send(401, { error: 'invalid_token' }) }
     if (expireNext) { expireNext = false; tokens.delete(auth); rec.status = 401; rec.note = 'смоделирован expired_token'; return send(401, { error: 'expired_token', error_description: 'The access token provided has expired.' }) }
     let r
-    try { r = await post(method, p) }
+    try { r = await post(method, p, v3) }
     catch { rec.status = 502; return send(502, { error: 'proxy_error' }) }
     const text = await r.text()
     rec.status = r.status; rec.ms = Date.now() - rec.t0
@@ -131,6 +133,14 @@ try {
     ['task_list', { filter: { '%TITLE': RUN } }],
     ['task_get', { id: task }, 'ID строкой, как его отдаёт task_list'],
     ['task_get', { id: 999999 }, 'нет такой задачи'],
+    ['task_checklist', { taskId: task }],
+    ['task_elapsed', { taskId: task }],
+    ['task_comments', { taskId: task }],
+    ['calendar_busy', { users: [1], from: '2026-10-16', to: '2026-10-20' }],
+    ['note_bases', {}, 'REST v3'],
+    ['note_search', { query: 'базы знаний' }, 'REST v3'],
+    ['note_get', { id: 3 }, 'REST v3'],
+    ['note_get', { id: 999999 }, 'REST v3: нет такой статьи'],
     ['crm_deal_get', { id: 999999999 }, 'нет такой сделки'],
     ['crm_deal_get', { id: -1 }, 'неверный аргумент'],
     ['crm_deal_get', { id: deal }, 'access истёк на портале', () => { expireNext = true }],

@@ -126,6 +126,7 @@ sequenceDiagram
 | `task_checklist`, `task_elapsed`, `task_results` | `task.checklistitem.getlist`, `task.elapseditem.getlist`, `tasks.task.result.list` |
 | `task_comments` | `tasks.task.get` → чат задачи `im.dialog.messages.get` (новые задачи) или `task.commentitem.getlist` (старые) |
 | `calendar_events`, `calendar_busy` | `calendar.event.get`, `calendar.accessibility.get` |
+| `note_bases`, `note_tree`, `note_search`, `note_get` | база знаний, **только REST v3** (`/rest/api/`): `note.collection.list`, `note.document.tree.list`, `note.document.search.list`, `note.document.get`. Какие методы идут в v3 — `isV3()` в `server/lib/b24.ts` |
 
 **Запись в задачи** (`server/plugins/write-tools.ts`) — только тем, кому администратор открыл запись на `/admin`
 ([`ACCESS.md`](ACCESS.md)); остальные этих инструментов не видят. Изменение отвечает «было → стало», журнал — имена аргументов.
@@ -137,6 +138,7 @@ sequenceDiagram
 | `task_checklist_add`, `task_checklist_done` | `task.checklistitem.add`, `task.checklistitem.complete` / `renew` |
 | `task_comment_add` | `task.commentitem.add` (у новых задач попадает в чат задачи — проверено) |
 | `task_time_add` | `task.elapseditem.add` |
+| `note_add`, `note_update` | `note.document.add`, `note.document.update` (без `overwrite`: статью, открытую в редакторе, не затираем) |
 | `calendar_event_add` | `calendar.event.add` в своём календаре; с участниками — встреча (проверено 2026-10-16) |
 
 Набор повторяет то, что Битрикс24 сам даёт Марте с разметкой «читает» (`bx-shef/toolsai`,

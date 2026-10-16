@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { Session } from '../lib/oauth'
 import { WRITE_TOOLS } from '../lib/manifest'
 
-// Встроенная запись в задачи. Инструменты появляются только у тех, кому администратор портала
+// Встроенная запись: задачи, календарь, база знаний. Инструменты появляются только у тех, кому администратор портала
 // открыл запись (/admin, «Кто может менять данные») — остальные их не видят вовсе. Действует сотрудник
 // своими правами в Битрикс24. Изменение отвечает «было → стало», чтобы человек видел, что поменялось;
 // журнал — только имена аргументов (как у чтения). Формы запросов сверены на тестовом портале 2026-10-16.
@@ -125,6 +125,35 @@ const defs: Record<(typeof WRITE_TOOLS)[number], Def> = {
       }
       if (a.attendees?.length) Object.assign(params, { is_meeting: 'Y', host: me, attendees: [...new Set([me, ...a.attendees])] })
       return { eventId: (await b24Call('calendar_event_add', 'calendar.event.add', params, a)).result }
+    },
+  },
+  note_add: {
+    title: 'Создать статью в базе знаний',
+    description: 'Новая статья в базе знаний (текст — Markdown). parentId — чтобы вложить в другую статью. ID базы — из note_bases.',
+    input: { collectionId: id, title: z.string().min(1).max(255), markdown: z.string().max(500_000).default(''), parentId: id.optional() },
+    handler: async (a) => {
+      const fields: Record<string, unknown> = { collectionId: a.collectionId, title: a.title, markdown: a.markdown }
+      if (a.parentId) fields.parentId = a.parentId
+      const d = (await b24Call('note_add', 'note.document.add', { fields }, a)).result?.item ?? {}
+      return { id: d.id, collectionId: d.collectionId, title: d.title }
+    },
+  },
+  note_update: {
+    title: 'Изменить статью базы знаний',
+    description: 'Заменить заголовок и/или текст статьи (Markdown целиком, не дописывание). Ответ — что было и что стало (текст — длиной).',
+    input: { id, title: z.string().min(1).max(255).optional(), markdown: z.string().max(500_000).optional() },
+    handler: async (a) => {
+      const fields: Record<string, unknown> = {}
+      if (a.title !== undefined) fields.title = a.title
+      if (a.markdown !== undefined) fields.markdown = a.markdown
+      if (!Object.keys(fields).length) throw createError({ statusCode: 400, message: 'Нечего менять: укажите title или markdown' })
+      const before = (await b24Call('note_update', 'note.document.get', { id: a.id }, { id: a.id })).result?.item ?? {}
+      // overwrite не передаём: если статью сейчас правят в редакторе, портал откажет, а не затрёт чужое
+      const after = (await b24Call('note_update', 'note.document.update', { id: a.id, fields }, a)).result?.item ?? {}
+      const changes: Record<string, { было: unknown, стало: unknown }> = {}
+      if ('title' in fields) changes.title = { было: before.title ?? null, стало: after.title ?? null }
+      if ('markdown' in fields) changes.markdown = { было: `${String(before.markdown ?? '').length} символов`, стало: `${String(after.markdown ?? '').length} символов` }
+      return { id: a.id, changes }
     },
   },
   task_time_add: {
