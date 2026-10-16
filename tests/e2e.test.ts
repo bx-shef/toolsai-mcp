@@ -451,4 +451,34 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect((await call('task_comments', { taskId: 5 })).source).toBe('forum')
     fake.state.user = 7
   })
+
+  it('запись в задачи: видна только с правом записи, отвечает «было → стало»', async () => {
+    fake.state.user = 7 // без права записи (настройки предыдущего теста: только U7 на вход)
+    const plain = await fullToken()
+    const names = (await mcp(plain.access_token, 'tools/list')).body.result.tools.map((x: any) => x.name)
+    expect(names).not.toContain('task_create')
+    fake.state.user = 1 // администратор портала пишет всегда
+    const t = await fullToken()
+    const tools = Object.fromEntries((await mcp(t.access_token, 'tools/list')).body.result.tools.map((x: any) => [x.name, x]))
+    expect(tools.task_update.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false })
+    const call = async (name: string, args: object) => {
+      const r = await mcp(t.access_token, 'tools/call', { name, arguments: args })
+      expect(r.body.result.isError, JSON.stringify(r.body)).toBeFalsy()
+      return JSON.parse(r.body.result.content[0].text)
+    }
+    expect(await call('task_create', { title: 'Отчёт', crm: ['D_12'] })).toMatchObject({ id: 30, responsibleId: 1, status: 'ждёт выполнения' })
+    expect(fake.calls.filter((c: any) => c.path.startsWith('/rest/tasks.task.add')).at(-1).body.fields).toMatchObject({ TITLE: 'Отчёт', RESPONSIBLE_ID: '1', UF_CRM_TASK: ['D_12'] })
+    expect(await call('task_update', { taskId: 30, title: 'Стало' })).toEqual({ taskId: 30, changes: { title: { было: 'Было', стало: 'Стало' } } })
+    expect(await call('task_status', { taskId: 30, action: 'start' })).toEqual({ taskId: 30, status: { было: 'ждёт выполнения', стало: 'выполняется' } })
+    expect(await call('task_time_add', { taskId: 30, minutes: 30, comment: 'сделано' })).toEqual({ taskId: 30, recordId: 5, minutes: 30 })
+    expect(await call('task_checklist_done', { taskId: 30, itemId: 4, done: false })).toMatchObject({ done: false })
+    expect(fake.calls.at(-1).path).toMatch(/task\.checklistitem\.renew/)
+    expect((await call('task_comment_add', { taskId: 30, text: 'итог' })).commentId).toBe(88)
+    const empty = await mcp(t.access_token, 'tools/call', { name: 'task_update', arguments: { taskId: 30 } })
+    expect(empty.body.result.isError).toBe(true)
+    // журнал — без значений
+    expect(logs).toMatch(/"tool":"task_update","method":"tasks.task.update","args":\["taskId","title"\],"ok":true/)
+    expect(logs).not.toContain('Стало')
+    fake.state.user = 7
+  })
 })

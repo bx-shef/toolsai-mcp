@@ -7,7 +7,7 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
   let n = 0
   const tokens = new Map() // access -> userId
   const refresh = new Map() // refresh -> userId
-  const state = { user: 7, expireNext: false, revoked: false, manifestFail: false, admins: new Set([1]) }
+  const state = { user: 7, expireNext: false, revoked: false, manifestFail: false, admins: new Set([1]), task: { id: '30', title: 'Было', status: '2', deadline: null, responsibleId: '1' } }
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x')
     let body = ''
@@ -57,6 +57,16 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
         const codes = [].concat(p.ACCESS ?? [])
         return json(200, { result: state.admins.has(uid) || codes.includes('AU') || codes.includes(`U${uid}`) })
       }
+      // Запись в задачи: состояние одной задачи 30
+      if (method === 'tasks.task.add') return json(200, { result: { task: { id: '30', title: p.fields.TITLE, status: '2', responsibleId: String(p.fields.RESPONSIBLE_ID), deadline: p.fields.DEADLINE ?? null } } })
+      if (method === 'tasks.task.update') { Object.assign(state.task, { title: p.fields.TITLE ?? state.task.title, deadline: p.fields.DEADLINE ?? state.task.deadline }); return json(200, { result: { task: { ...state.task } } }) }
+      const act = /^tasks\.task\.(start|pause|complete|defer|renew)$/.exec(method)
+      if (act) { state.task.status = { start: '3', pause: '2', complete: '5', defer: '6', renew: '2' }[act[1]]; return json(200, { result: { task: { ...state.task } } }) }
+      if (method === 'tasks.task.get' && Number(p.taskId) === 30) return json(200, { result: { task: { ...state.task } } })
+      if (method === 'task.checklistitem.add') return json(200, { result: 4 })
+      if (method === 'task.checklistitem.complete' || method === 'task.checklistitem.renew') return json(200, { result: true })
+      if (method === 'task.commentitem.add') return json(200, { result: 88 })
+      if (method === 'task.elapseditem.add') return json(200, { result: Number(p.ARFIELDS.SECONDS) === 1800 ? 5 : 0 })
       if (method === 'calendar.event.get') return json(200, { result: [{ ID: '1', NAME: 'Планёрка', DATE_FROM: p.from, OWNER_ID: String(p.ownerId), CAL_TYPE: p.type }] })
       if (method === 'calendar.accessibility.get') return json(200, { result: Object.fromEntries(p.users.map(u => [u, []])) })
       if (method === 'task.checklistitem.getlist') return json(200, { result: [{ ID: '2', TASK_ID: String(p.TASKID), PARENT_ID: 0, TITLE: 'BX_CHECKLIST_1', IS_COMPLETE: 'N' }] })

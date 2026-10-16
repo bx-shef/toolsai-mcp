@@ -127,6 +127,17 @@ sequenceDiagram
 | `task_comments` | `tasks.task.get` → чат задачи `im.dialog.messages.get` (новые задачи) или `task.commentitem.getlist` (старые) |
 | `calendar_events`, `calendar_busy` | `calendar.event.get`, `calendar.accessibility.get` |
 
+**Запись в задачи** (`server/plugins/write-tools.ts`) — только тем, кому администратор открыл запись на `/admin`
+([`ACCESS.md`](ACCESS.md)); остальные этих инструментов не видят. Изменение отвечает «было → стало», журнал — имена аргументов.
+
+| Имя | Метод REST |
+|---|---|
+| `task_create`, `task_update` | `tasks.task.add`, `tasks.task.update` (+ `tasks.task.get` для «было») |
+| `task_status` | `tasks.task.start` / `pause` / `complete` / `defer` / `renew` |
+| `task_checklist_add`, `task_checklist_done` | `task.checklistitem.add`, `task.checklistitem.complete` / `renew` |
+| `task_comment_add` | `task.commentitem.add` (у новых задач попадает в чат задачи — проверено) |
+| `task_time_add` | `task.elapseditem.add` |
+
 Набор повторяет то, что Битрикс24 сам даёт Марте с разметкой «читает» (`bx-shef/toolsai`,
 `docs/private/mcp-box.md` §1.2), но поверх REST.
 
