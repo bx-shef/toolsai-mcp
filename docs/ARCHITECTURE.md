@@ -124,6 +124,7 @@ sequenceDiagram
 | `disk_storages`, `disk_folder` | `disk.storage.getlist`, `disk.folder.getchildren`; `DOWNLOAD_URL` не отдаётся — в нём токен доступа |
 | `catalog_list`, `catalog_products`, `catalog_product_get` | `catalog.catalog.list`, `catalog.product.list` (нужен `iblockId`), `catalog.product.get` + `catalog.price.list` + `catalog.storeproduct.list` |
 | `crm_doc_templates` | `crm.documentgenerator.template.list`, привязка `2_category_<воронка>` / `<тип>_<воронка>` / номер типа |
+| `calls_stats` | `voximplant.statistic.get` — звонки за период, сводка; запись разговора не отдаётся; на портале с телефонией не проверено |
 | `im_chats` | `im.recent.list` — недавние диалоги, `dialogId` для отправки |
 | `crm_find` | `crm.duplicate.findbycomm` по телефону/почте + `crm.item.list` для названий; телефон — в международном виде |
 | `crm_fields`, `crm_stages` | `crm.item.fields`; `crm.category.list` + `crm.status.list` (ENTITY_ID: `DEAL_STAGE[_<воронка>]`, `STATUS`, `DYNAMIC_<тип>_STAGE_<воронка>`) |
