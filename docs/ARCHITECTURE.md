@@ -121,6 +121,7 @@ sequenceDiagram
 | `user_current` | `user.current` |
 | `crm_item_list`, `crm_item_get` | `crm.item.list`, `crm.item.get` — сделки, лиды, контакты, компании, смарт-процессы (замена DEPRECATED `crm.deal.*` и т.п.); список до 50, `next`/`total` — следующая страница) |
 | `worktime_status` | `timeman.status` |
+| `disk_storages`, `disk_folder` | `disk.storage.getlist`, `disk.folder.getchildren`; `DOWNLOAD_URL` не отдаётся — в нём токен доступа |
 | `im_chats` | `im.recent.list` — недавние диалоги, `dialogId` для отправки |
 | `crm_find` | `crm.duplicate.findbycomm` по телефону/почте + `crm.item.list` для названий; телефон — в международном виде |
 | `crm_fields`, `crm_stages` | `crm.item.fields`; `crm.category.list` + `crm.status.list` (ENTITY_ID: `DEAL_STAGE[_<воронка>]`, `STATUS`, `DYNAMIC_<тип>_STAGE_<воронка>`) |
@@ -137,6 +138,7 @@ sequenceDiagram
 | Имя | Метод REST |
 |---|---|
 | `worktime_action` | `timeman.open` / `pause` / `close` — только свой день, без права записи (группа «Рабочее время») |
+| `disk_folder_add`, `disk_move` | `disk.folder.addsubfolder`, `disk.file|folder.moveto` («было → стало»); удаления нет |
 | `im_message_send` | `im.message.add` — личное (ID сотрудника) или в чат (`chat<ID>`), группа «Сообщения» |
 | `crm_item_update`, `crm_item_add` | `crm.item.update` / `add` — только поля из `crm.item.fields`, не только для чтения; «было → стало» |
 | `task_create`, `task_update` | `tasks.task.add`, `tasks.task.update` (+ `tasks.task.get` для «было») |
