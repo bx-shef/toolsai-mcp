@@ -123,6 +123,16 @@ const defs: Record<(typeof WRITE_TOOLS)[number], Def> = {
       return { id: a.id, changes }
     },
   },
+  crm_doc_create: {
+    title: 'Создать документ по шаблону',
+    description: 'Документ (договор, счёт, акт, КП) по шаблону из crm_doc_templates для записи CRM. Ответ — номер и ссылки на скачивание (DOCX) и PDF (PDF появляется через несколько секунд).',
+    input: { templateId: id, entity: crmEntity, id },
+    handler: async (a) => {
+      // crm.documentgenerator.document.add — проверено 2026-10-17; pdfUrl в ответе нет, он появляется после конвертации
+      const d = (await b24Call('crm_doc_create', 'crm.documentgenerator.document.add', { templateId: a.templateId, entityTypeId: entityTypeId(a.entity), entityId: a.id }, a)).result?.document ?? {}
+      return { documentId: Number(d.id), title: d.title, number: d.number, downloadUrl: d.downloadUrl, pdfUrl: String(d.downloadUrl ?? '').replace('document.download', 'document.getPdf') || null }
+    },
+  },
   task_create: {
     title: 'Создать задачу',
     description: 'Создать задачу или подзадачу (parentId — ID родительской: так проект раскладывается на шаги). Ответственный по умолчанию — сам сотрудник. crm — привязки вида D_12 (сделка), L_3 (лид), C_5 (контакт), CO_7 (компания).',
