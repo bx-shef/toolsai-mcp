@@ -33,6 +33,18 @@ export class B24Error extends Error {
   }
 }
 
+/**
+ * Текст отказа, который прислал сам портал в ответе REST (error_description), — или ''.
+ * Только HTTP 4xx с кодом портала: сетевые сбои SDK/axios (JSSDK_*, ERR_*, network_error — в тексте
+ * IP и хосты), наши проверки (portal_*, bad_*, refresh_failed, http_*; status 0) и текст, равный
+ * коду, — не текст портала. Для инструментов модулей (b24Call moduleText).
+ */
+export function portalText(e: B24Error): string {
+  if (e.status < 400 || e.status > 499) return ''
+  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(e.code) || /^(JSSDK_|ERR_|http_|bad_|portal_|network_error$|refresh_failed$)/.test(e.code)) return ''
+  return e.message === e.code ? '' : e.message
+}
+
 /** Битрикс24 не принял токены сотрудника — нужен новый вход. */
 export class ReloginRequired extends B24Error {}
 

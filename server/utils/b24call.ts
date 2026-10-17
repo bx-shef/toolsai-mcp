@@ -1,5 +1,5 @@
 import { audit } from '../lib/audit'
-import { B24Error, ReloginRequired } from '../lib/b24'
+import { B24Error, portalText, ReloginRequired } from '../lib/b24'
 import { cleanText } from '../lib/manifest'
 import type { Session } from '../lib/oauth'
 
@@ -7,8 +7,9 @@ import type { Session } from '../lib/oauth'
  * REST из инструмента от имени сотрудника, подключившего клиента.
  * Кто вызывает — из Bearer-токена (middleware 00.auth.ts), никогда не из аргументов инструмента.
  *
- * moduleText — инструмент модуля портала (манифест): к коду отказа добавляется текст ошибки
- * модуля (error_description, очищенный, до 300 знаков), чтобы модель поняла, что исправить
+ * moduleText — инструмент модуля портала (манифест): к коду отказа добавляется текст, который
+ * портал прислал в ответе (portalText(): только HTTP 4xx с кодом портала, не сетевые сбои и не наши
+ * проверки), очищенный, в одну строку, до 300 знаков, — чтобы модель поняла, что исправить
  * («Выберите сотрудников или отделы»). Модули доверенные — их задаёт администратор; у встроенных
  * инструментов текст ядра по-прежнему не показываем.
  */
@@ -37,7 +38,7 @@ export async function b24Call(tool: string, method: string, params: Record<strin
     if (e instanceof B24Error && e.code === 'NOT_FOUND') throw createError({ statusCode: 404, message: 'Не найдено: записи с таким ID нет или она недоступна сотруднику' })
     // Клиенту — только код ошибки Битрикс24, без внутреннего текста; модулю — с его текстом.
     if (e instanceof B24Error) {
-      const text = moduleText ? cleanText(e.message, 300, true) : ''
+      const text = moduleText ? cleanText(portalText(e), 300, true) : ''
       throw createError({ statusCode: 502, message: `Битрикс24 отказал: ${e.code}${text ? ` — ${text}` : ''}` })
     }
     throw e

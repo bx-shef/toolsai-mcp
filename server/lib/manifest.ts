@@ -22,9 +22,10 @@ const MAX_DEPTH = 6
 /** Текст для модели без управляющих и bidi-символов: ими прячут инструкции от человека. */
 export function cleanText(s: string, max: number, oneLine = false): string {
   // eslint-disable-next-line no-control-regex
-  let t = s.replace(/[\u0000-\u0008\u000B-\u001F\u007F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
+  let t = s.replace(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF\u{E0000}-\u{E007F}]/gu, '')
   if (oneLine) t = t.replace(/\s+/g, ' ')
-  return t.trim().slice(0, max)
+  // по кодовым точкам: не разрезать суррогатную пару (эмодзи) на границе
+  return Array.from(t.trim()).slice(0, max).join('')
 }
 
 /** Схема без ссылок ($ref/$defs/$id/$anchor) и не глубже MAX_DEPTH: ссылки могут зацикливаться. */

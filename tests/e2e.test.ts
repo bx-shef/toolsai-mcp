@@ -178,6 +178,10 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     // без права записи — только чтение; исключение — свой рабочий день
     for (const tool of list.body.result.tools) if (tool.name !== 'worktime_action') expect(tool.annotations?.readOnlyHint).toBe(true)
 
+    // встроенный инструмент: текст отказа ядра модели не показываем — только код
+    const denied = await mcp(t.access_token, 'tools/call', { name: 'crm_item_get', arguments: { entity: 'deal', id: 403 } })
+    expect(JSON.stringify(denied.body)).toContain('Битрикс24 отказал: ACCESS_DENIED')
+    expect(JSON.stringify(denied.body)).not.toContain('секрет')
     const call = await mcp(t.access_token, 'tools/call', { name: 'crm_item_get', arguments: { entity: 'deal', id: 42 } })
     const out = JSON.parse(call.body.result.content[0].text)
     expect(out).toMatchObject({ id: 42, _asUser: 7 })
@@ -357,6 +361,8 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     const refused = await mcp(t.access_token, 'tools/call', { name: 'kb_search', arguments: { query: 'плохой' } })
     expect(refused.body.result.isError).toBe(true)
     expect(refused.body.result.content[0].text).toBe('[502] Битрикс24 отказал: INVALID_ARG_VALUE — Слишком короткий запрос')
+    const long = await mcp(t.access_token, 'tools/call', { name: 'kb_search', arguments: { query: 'длинный' } })
+    expect(long.body.result.content[0].text).toBe(`[502] Битрикс24 отказал: INVALID_ARG_VALUE — ${'я'.repeat(300)}`)
     expect(logs).toMatch(/"tool":"module:kb_search","method":"shef.kb.search","args":\["query"\],"ok":true/)
   })
 
