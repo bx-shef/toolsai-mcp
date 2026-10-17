@@ -413,7 +413,7 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     // чужая форма без csrf — отказ; мусор вместо кодов — отказ, ничего не сохранено
     expect((await save({ csrf: 'x', use: 'U7' })).status).toBe(403)
     expect((await save({ csrf, use: 'ivanov' })).status).toBe(400)
-    const all = { group_crm: '1', group_tasks: '1', group_calendar: '1', group_kb: '1', group_modules: '1' }
+    const all = { group_crm: '1', group_tasks: '1', group_calendar: '1', group_kb: '1', group_messages: '1', group_modules: '1' }
     const saved = await save({ csrf, use: 'U7', write: '', manifests: 'shef.mcp.tools', ...all })
     expect(saved.status).toBe(200)
     expect(await saved.text()).toContain('Сохранено')
@@ -574,6 +574,12 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     ], duplicates: true })
     expect((await call('crm_find', { email: ['nobody@example.com'] })).data).toEqual({ found: [], duplicates: false })
     expect((await call('crm_find', {})).err).toBe(true)
+    // сообщения: чаты и отправка; неверный адресат — отказ до портала
+    expect((await call('im_chats', {})).data).toEqual([{ dialogId: '8', type: 'user', title: 'Пётр' }, { dialogId: 'chat2', type: 'chat', title: 'Общий чат' }])
+    expect((await call('im_message_send', { dialogId: 'chat2', text: 'Дайджест' })).data).toEqual({ dialogId: 'chat2', messageId: 136 })
+    expect((await call('im_message_send', { dialogId: 'all', text: 'x' })).err).toBe(true)
+    expect((await call('im_message_send', { dialogId: 'chat999', text: 'x' })).data).toContain('CHAT_ID')
+    expect(logs).not.toContain('Дайджест')
     // значения полей в журнал не попадают
     expect(logs).not.toContain('Директор')
     fake.state.user = 7

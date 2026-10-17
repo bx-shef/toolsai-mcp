@@ -65,6 +65,16 @@ const defs: Record<(typeof WRITE_TOOLS)[number], Def> = {
       return { entityTypeId: etid, id: item.id, title: item.title ?? [item.name, item.lastName].filter(Boolean).join(' ') }
     },
   },
+  im_message_send: {
+    title: 'Написать сообщение',
+    description: 'Сообщение от имени сотрудника: личное (dialogId — ID сотрудника) или в групповой чат (dialogId — chat<ID>, из im_chats). Для отчётов, напоминаний, дайджестов.',
+    input: { dialogId: z.string().regex(/^(chat)?\d+$/, 'ID сотрудника или chat<ID>'), text: z.string().min(1).max(20000) },
+    handler: async (a) => {
+      // im.message.add — .bitrix-docs/b24-rest-docs/api-reference/chats/messages/im-message-add.md; проверено 2026-10-17
+      const res = await b24Call('im_message_send', 'im.message.add', { DIALOG_ID: a.dialogId, MESSAGE: a.text }, a)
+      return { dialogId: a.dialogId, messageId: res.result }
+    },
+  },
   task_create: {
     title: 'Создать задачу',
     description: 'Создать задачу или подзадачу (parentId — ID родительской: так проект раскладывается на шаги). Ответственный по умолчанию — сам сотрудник. crm — привязки вида D_12 (сделка), L_3 (лид), C_5 (контакт), CO_7 (компания).',

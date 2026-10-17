@@ -96,6 +96,8 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
       if (method === 'crm.item.get' && Number(p.entityTypeId) === 1) return json(400, { error: 'ERROR_METHOD_NOT_FOUND', error_description: 'Method not found!' })
       if (method === 'crm.item.get' && Number(p.id) === 404) return json(400, { error: 'NOT_FOUND', error_description: 'Элемент не найден' })
       if (method === 'crm.item.get') return json(200, { result: { item: { id: Number(p.id), title: `Сделка ${p.id}`, stageId: state.deal.stageId, post: state.deal.post, _asUser: uid } } })
+      if (method === 'im.recent.list') return json(200, { result: { items: [{ id: 8, type: 'user', title: 'Пётр' }, { id: 'chat2', type: 'chat', title: 'Общий чат' }] } })
+      if (method === 'im.message.add') return String(p.DIALOG_ID) === 'chat999' ? json(400, { error: 'CHAT_ID', error_description: 'Ошибка при создании сообщения' }) : json(200, { result: 136 })
       if (method === 'crm.duplicate.findbycomm') return json(200, { result: p.type === 'PHONE' ? { CONTACT: [46, 48], COMPANY: [9] } : [] })
       if (method === 'crm.item.list' && p.filter?.['@id']) return json(200, { result: { items: p.filter['@id'].filter(id => id !== 9).map(id => ({ id, name: `К${id}`, assignedById: 1 })) } })
       if (method === 'crm.item.list') return json(200, { result: { items: [{ id: p.start + 1 }] }, next: p.start + 50, total: 120 })
