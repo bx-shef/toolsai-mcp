@@ -1,4 +1,4 @@
-import { parseCodes, parseManifests } from '../../lib/access'
+import { parseCodes, parseGroupsOff, parseManifests } from '../../lib/access'
 import { ADMIN_COOKIE } from '../../lib/admin'
 
 // Сохранить права портала. Администратор ли — заново спрашиваем у портала: права могли отобрать.
@@ -14,6 +14,13 @@ export default defineEventHandler(async (event) => {
     setResponseStatus(event, 403)
     return adminSettingsPage(s, current, envNote(), '', 'Форма устарела — откройте настройки заново', draft)
   }
+  // Токены Битрикс24 администратора могли сгореть (отказ входа в MCP их забывает) — это не «не администратор»
+  if (!await useServices().b24.hasTokens(s)) {
+    await useServices().admin.logout(getCookie(event, ADMIN_COOKIE))
+    clearAdminCookie(event)
+    setResponseStatus(event, 401)
+    return adminLoginPage(s.host, 'Вход устарел — войдите заново, изменения не сохранены')
+  }
   if (!await access.isAdmin(s)) {
     await useServices().admin.logout(getCookie(event, ADMIN_COOKIE))
     clearAdminCookie(event)
@@ -21,8 +28,8 @@ export default defineEventHandler(async (event) => {
     return adminLoginPage(s.host, 'Вы больше не администратор этого Битрикс24')
   }
   try {
-    const saved = await access.save(s.memberId, { use: parseCodes(draft.use), write: parseCodes(draft.write), manifests: parseManifests(draft.manifests) }, s.userId)
-    console.log(JSON.stringify({ kind: 'admin', portal: s.host, member: s.memberId, user: s.userId, action: 'settings', use: saved.use.length, write: saved.write.length, manifests: saved.manifests.length }))
+    const saved = await access.save(s.memberId, { disabled: Boolean(body.disabled), groupsOff: parseGroupsOff(body), use: parseCodes(draft.use), write: parseCodes(draft.write), manifests: parseManifests(draft.manifests) }, s.userId)
+    console.log(JSON.stringify({ kind: 'admin', portal: s.host, member: s.memberId, user: s.userId, action: 'settings', disabled: saved.disabled, groupsOff: saved.groupsOff, use: saved.use.length, write: saved.write.length, manifests: saved.manifests.length }))
     return adminSettingsPage(s, saved, envNote(), 'Сохранено')
   }
   catch (e) {

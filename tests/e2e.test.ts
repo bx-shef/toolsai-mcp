@@ -413,10 +413,11 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     // чужая форма без csrf — отказ; мусор вместо кодов — отказ, ничего не сохранено
     expect((await save({ csrf: 'x', use: 'U7' })).status).toBe(403)
     expect((await save({ csrf, use: 'ivanov' })).status).toBe(400)
-    const saved = await save({ csrf, use: 'U7', write: '', manifests: 'shef.mcp.tools' })
+    const all = { group_crm: '1', group_tasks: '1', group_calendar: '1', group_kb: '1', group_modules: '1' }
+    const saved = await save({ csrf, use: 'U7', write: '', manifests: 'shef.mcp.tools', ...all })
     expect(saved.status).toBe(200)
     expect(await saved.text()).toContain('Сохранено')
-    expect(logs).toMatch(/"kind":"admin".*"action":"settings","use":1,"write":0,"manifests":1/)
+    expect(logs).toMatch(/"kind":"admin".*"action":"settings","disabled":false,"groupsOff":\[\],"use":1,"write":0,"manifests":1/)
 
     // сотрудник 7 входит; модули — из настроек, запись — только администраторам
     fake.state.user = 7
@@ -429,6 +430,27 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     // сотрудник 8 не в кодах
     fake.state.user = 8
     expect((await login()).back.searchParams.get('error')).toBe('access_denied')
+
+    // выключенная группа пропадает у всех — и чтение, и запись
+    expect((await save({ csrf, use: 'U7', manifests: 'shef.mcp.tools', ...all, group_crm: '' })).status).toBe(200)
+    fake.state.user = 1
+    const adm = await fullToken()
+    const names = (await mcp(adm.access_token, 'tools/list')).body.result.tools.map((x: any) => x.name)
+    expect(names.filter((n: string) => n.startsWith('crm_'))).toEqual([])
+    expect(names).toContain('task_create')
+    expect((await mcp(adm.access_token, 'tools/call', { name: 'crm_deal_get', arguments: { id: 1 } })).body.result?.isError ?? true).toBe(true)
+    // главный выключатель: закрыто всем, и администратору, и уже выданный токен перестаёт действовать
+    expect((await save({ csrf, use: 'U7', manifests: 'shef.mcp.tools', ...all, disabled: '1' })).status).toBe(200)
+    expect((await mcp(adm.access_token, 'tools/list')).status).toBe(401)
+    expect((await login()).back.searchParams.get('error')).toBe('access_denied')
+    // отказ входа забыл токены администратора — страница просит войти заново, а не «вы не администратор»
+    const stale = await save({ csrf, use: 'U7', manifests: 'shef.mcp.tools', ...all })
+    expect(stale.status).toBe(401)
+    expect(await stale.text()).toContain('войдите заново')
+    const again = (await adminLogin()).headers.getSetCookie().find(c => c.startsWith('mcp_admin='))!.split(';')[0]!
+    const csrf2 = /name="csrf" value="([^"]+)"/.exec(await (await fetch(`${BASE}/admin`, { headers: { cookie: again } })).text())![1]!
+    // обратно: всё включено, как было
+    expect((await fetch(`${BASE}/admin/save`, { method: 'POST', headers: { cookie: again, 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ csrf: csrf2, use: 'U7', write: '', manifests: 'shef.mcp.tools', ...all }) })).status).toBe(200)
     fake.state.user = 7
   })
 

@@ -1,5 +1,5 @@
 import type { H3Event } from 'h3'
-import type { PortalSettings } from '../lib/access'
+import { TOOL_GROUPS, type PortalSettings, type ToolGroup } from '../lib/access'
 import { ADMIN_COOKIE, type AdminSession } from '../lib/admin'
 import { OAuthError } from '../lib/oauth'
 
@@ -80,6 +80,13 @@ export function adminSettingsPage(s: AdminSession, st: PortalSettings, envNote: 
   return page('Настройки MCP', `<p>Портал <b>${esc(s.host)}</b>, вы — <b>${esc(s.name || `сотрудник ${s.userId}`)}</b> (администратор).</p>
 ${msg ? `<p class="done">${esc(msg)}</p>` : ''}${error ? `<p class="err">${esc(error)}</p>` : ''}
 <form method="post" action="${esc(base)}/admin/save"><input type="hidden" name="csrf" value="${esc(s.csrf)}">
+<h2>MCP на портале</h2>
+<p><label><input type="checkbox" name="disabled" value="1"${st.disabled ? ' checked' : ''}> <b>Выключить MCP для всех</b></label><br>
+<small>Как «Разрешить внешним AI-системам выполнять действия» в Битрикс24, только наоборот: отмечено — ни один сотрудник
+(и администратор тоже) не работает через этот сервер, подключения остаются и заработают, когда снимете отметку.</small></p>
+<h2>Что можно</h2>
+<p><small>Выключенная группа пропадает у всех: ИИ не видит её инструментов. Права самого Битрикс24 действуют всегда.</small></p>
+${(Object.entries(TOOL_GROUPS) as [ToolGroup, string][]).map(([g, label]) => `<label><input type="checkbox" name="group_${g}" value="1"${st.groupsOff.includes(g) ? '' : ' checked'}> ${esc(label)}</label><br>`).join('\n')}
 <h2>Кто пользуется MCP</h2>
 <p><small>Коды доступа Битрикс24, через запятую или с новой строки: <code>AU</code> — все сотрудники,
 <code>U7</code> — сотрудник 7, <code>D3</code> — отдел 3, <code>DR3</code> — отдел 3 с подотделами, <code>G2</code> — группа пользователей.

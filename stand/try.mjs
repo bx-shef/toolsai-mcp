@@ -52,7 +52,7 @@ step('ничего не настроено: сотрудник 7 — отказ,
 await login(7)
 await login(1)
 step('администратор открывает U7 и модуль shef.mcp.tools')
-await adminSave({ use: 'U7', write: '', manifests: 'shef.mcp.tools' })
+await adminSave({ use: 'U7', write: '', manifests: 'shef.mcp.tools', group_crm: '1', group_tasks: '1', group_calendar: '1', group_kb: '1', group_modules: '1' })
 await login(7)
 await login(8)
 console.log('\nГотово. Страница настроек: ' + `${BASE}/admin`)

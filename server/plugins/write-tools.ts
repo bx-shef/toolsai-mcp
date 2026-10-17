@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { toolGroup } from '../lib/access'
 import type { Session } from '../lib/oauth'
 import { WRITE_TOOLS } from '../lib/manifest'
 
@@ -194,7 +195,10 @@ export default defineNitroPlugin((nitroApp) => {
   nitroApp.hooks.hook('mcp:server:created', async ({ server, event }) => {
     const session = event.context.session as Session | undefined
     if (!session || !await useServices().access.canWrite(session)) return
+    const off = await useServices().access.groupsOff(session)
     for (const name of WRITE_TOOLS) {
+      const g = toolGroup(name)
+      if (g && off.has(g)) continue
       const d = defs[name]
       server.registerTool(name, { title: d.title, description: d.description, inputSchema: d.input as never, annotations: WRITE }, (async (args: Record<string, unknown>) => {
         try {
