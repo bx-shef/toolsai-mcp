@@ -20,9 +20,18 @@ export const TOOL_GROUPS = {
   disk: 'Диск: папки и файлы, создать папку, переместить',
   catalog: 'Каталог: товары, цены, остатки, описания',
   calls: 'Телефония: статистика звонков',
+  booking: 'Онлайн-запись: записи на приём',
+  staff: 'Сотрудники: дни рождения',
   modules: 'Инструменты модулей портала',
 } as const
 export type ToolGroup = keyof typeof TOOL_GROUPS
+
+/**
+ * Группы, выключенные, пока администратор портала не включит их сам на /admin (решение владельца
+ * 2026-10-17): персональные данные — записи клиентов на приём, дни рождения сотрудников. Новая группа
+ * с такими данными добавляется сюда, иначе она откроется на всех порталах в момент выкладки.
+ */
+export const DEFAULT_OFF: readonly ToolGroup[] = ['booking', 'staff']
 
 /** Группа инструмента — по приставке имени; user_current — всегда (без него клиент не знает, кто вошёл). */
 export function toolGroup(name: string): ToolGroup | null {
@@ -35,14 +44,18 @@ export function toolGroup(name: string): ToolGroup | null {
   if (name.startsWith('disk_')) return 'disk'
   if (name.startsWith('catalog_')) return 'catalog'
   if (name.startsWith('calls_')) return 'calls'
+  if (name.startsWith('booking_')) return 'booking'
+  if (name.startsWith('staff_')) return 'staff'
   return null
 }
 
 export interface PortalSettings {
   /** Главный выключатель портала (как «Разрешить внешним AI-системам…» у Битрикс24): true — MCP закрыт всем. */
   disabled: boolean
-  /** Выключенные группы инструментов. Пусто — включены все. */
+  /** Выключенные группы инструментов. Пусто — включены все, кроме DEFAULT_OFF. */
   groupsOff: ToolGroup[]
+  /** Группы из DEFAULT_OFF, которые администратор включил сам. */
+  groupsOn?: ToolGroup[]
   /** Коды доступа: кто пользуется MCP. Пусто — только администраторы портала. */
   use: string[]
   /** Коды доступа: кому инструменты модулей на запись и удаление. Пусто — только администраторы. */
@@ -89,7 +102,9 @@ export class Access {
 
   async save(memberId: string, s: Pick<PortalSettings, 'disabled' | 'groupsOff' | 'use' | 'write' | 'manifests'>, by: number): Promise<PortalSettings> {
     const prev = await this.settings(memberId)
-    const next: PortalSettings = { disabled: s.disabled, groupsOff: s.groupsOff, use: s.use, write: s.write, manifests: s.manifests, ver: prev.ver + 1, updatedBy: by, updatedAt: Date.now() }
+    // Отмеченные на форме группы из DEFAULT_OFF — включены явно
+    const groupsOn = DEFAULT_OFF.filter(g => !s.groupsOff.includes(g))
+    const next: PortalSettings = { disabled: s.disabled, groupsOff: s.groupsOff, groupsOn, use: s.use, write: s.write, manifests: s.manifests, ver: prev.ver + 1, updatedBy: by, updatedAt: Date.now() }
     // Без срока по смыслу — 10 лет: Store требует TTL.
     await this.store.put(`settings:${memberId}`, next, 10 * 365 * 24 * 3600)
     return next
@@ -138,7 +153,7 @@ export class Access {
 
   /** Выключенные группы инструментов портала. */
   async groupsOff(w: Who): Promise<Set<ToolGroup>> {
-    return new Set((await this.settings(w.memberId)).groupsOff)
+    return new Set(effectiveGroupsOff(await this.settings(w.memberId)))
   }
 
   async canWrite(w: Who): Promise<boolean> {
@@ -155,6 +170,11 @@ export class Access {
 }
 
 /** Флажки групп из формы (group_<код>=on — отмечена, значит включена) → выключенные группы. */
+/** Выключенные группы с учётом DEFAULT_OFF: такие выключены, пока администратор не включил их явно. */
+export function effectiveGroupsOff(s: Pick<PortalSettings, 'groupsOff' | 'groupsOn'>): ToolGroup[] {
+  return [...new Set([...s.groupsOff, ...DEFAULT_OFF.filter(g => !(s.groupsOn ?? []).includes(g))])]
+}
+
 export function parseGroupsOff(body: Record<string, unknown>): ToolGroup[] {
   return (Object.keys(TOOL_GROUPS) as ToolGroup[]).filter(g => !body[`group_${g}`])
 }

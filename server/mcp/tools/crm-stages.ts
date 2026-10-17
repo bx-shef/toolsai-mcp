@@ -17,7 +17,7 @@ export default defineMcpTool({
       const eid = stageEntityId(etid, c.id)
       const stages = eid
         ? ((await b24Call('crm_stages', 'crm.status.list', { filter: { ENTITY_ID: eid }, order: { SORT: 'ASC' } }, { entity })).result ?? [])
-            .map((s: any) => ({ id: s.STATUS_ID, name: s.NAME, semantics: s.EXTRA?.SEMANTICS ?? (s.SEMANTICS === 'S' ? 'success' : s.SEMANTICS === 'F' ? 'failure' : 'process') }))
+            .map(stageOf)
         : []
       out.push({ categoryId: c.id, name: c.name, stages })
     }

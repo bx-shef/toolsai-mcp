@@ -159,3 +159,51 @@ describe('icon', () => {
     expect((await loadIcon(dir)).type).toBe('image/svg+xml')
   })
 })
+
+describe('дни рождения (staff_birthdays)', () => {
+  it('месяц и день из PERSONAL_BIRTHDAY, мусор и пусто — null', async () => {
+    const { monthDay } = await import('../server/lib/people')
+    expect([monthDay('1990-10-19T03:00:00+03:00'), monthDay(''), monthDay(null), monthDay('1990-13-01'), monthDay('19.10.1990')]).toEqual([{ month: 10, day: 19 }, null, null, null, null])
+  })
+  it('через сколько дней: сегодня, через Новый год, 29 февраля, прошедшие в пределах back', async () => {
+    const { daysToBirthday } = await import('../server/lib/people')
+    const d = (s: string) => new Date(`${s}T12:00:00Z`)
+    expect([
+      daysToBirthday({ month: 10, day: 17 }, d('2026-10-17')),
+      daysToBirthday({ month: 1, day: 2 }, d('2026-12-30')),
+      daysToBirthday({ month: 2, day: 29 }, d('2027-02-27')),
+      daysToBirthday({ month: 10, day: 15 }, d('2026-10-17'), 3),
+      daysToBirthday({ month: 10, day: 15 }, d('2026-10-17')),
+    ]).toEqual([0, 3, 1, -2, 363])
+  })
+})
+
+describe('время брони (booking_list)', () => {
+  it('в поясе самой брони, неизвестный пояс и без пояса — по смещению портала', async () => {
+    const { localTime } = await import('../server/lib/people')
+    // 2026-10-17 09:00 UTC
+    expect([localTime(1792227600, 'Europe/Minsk', 0), localTime(1792227600, 'Europe/Berlin', 0), localTime(1792227600, 'Mars/Base', 180), localTime(1792227600, '', 60)])
+      .toEqual(['2026-10-17 12:00', '2026-10-17 11:00', '2026-10-17 12:00', '2026-10-17 10:00'])
+  })
+})
+
+describe('новые группы /admin и «сегодня» портала', () => {
+  it('booking_ и staff_ — свои группы, обращения открытых линий — в CRM', async () => {
+    const { toolGroup } = await import('../server/lib/access')
+    expect([toolGroup('booking_list'), toolGroup('staff_birthdays'), toolGroup('crm_openlines'), toolGroup('crm_funnel')]).toEqual(['booking', 'staff', 'crm', 'crm'])
+  })
+  it('сегодня — по поясу портала: в 01:30 по Минску уже следующий день, на западе — ещё прошлый', async () => {
+    const { portalToday } = await import('../server/lib/people')
+    const now = Date.parse('2026-10-18T22:30:00Z')
+    expect([portalToday(now, 180).getUTCDate(), portalToday(now, 0).getUTCDate(), portalToday(now, -720).getUTCDate()]).toEqual([19, 18, 18])
+  })
+})
+
+describe('группы по умолчанию выключены (решение владельца 2026-10-17)', () => {
+  it('записи и дни рождения выключены, пока администратор не включил; включённые не выключаются сами', async () => {
+    const { effectiveGroupsOff } = await import('../server/lib/access')
+    expect(effectiveGroupsOff({ groupsOff: [] }).sort()).toEqual(['booking', 'staff'])
+    expect(effectiveGroupsOff({ groupsOff: ['crm'], groupsOn: ['staff'] }).sort()).toEqual(['booking', 'crm'])
+    expect(effectiveGroupsOff({ groupsOff: [], groupsOn: ['booking', 'staff'] })).toEqual([])
+  })
+})

@@ -1,5 +1,5 @@
 import type { H3Event } from 'h3'
-import { TOOL_GROUPS, type PortalSettings, type ToolGroup } from '../lib/access'
+import { DEFAULT_OFF, TOOL_GROUPS, effectiveGroupsOff, type PortalSettings, type ToolGroup } from '../lib/access'
 import { ADMIN_COOKIE, type AdminSession } from '../lib/admin'
 import { OAuthError } from '../lib/oauth'
 
@@ -87,7 +87,7 @@ ${lic}
 (и администратор тоже) не работает через этот сервер, подключения остаются и заработают, когда снимете отметку.</small></p>
 <h2>Что можно</h2>
 <p><small>Выключенная группа пропадает у всех: ИИ не видит её инструментов. Права самого Битрикс24 действуют всегда.</small></p>
-${(Object.entries(TOOL_GROUPS) as [ToolGroup, string][]).map(([g, label]) => `<label><input type="checkbox" name="group_${g}" value="1"${st.groupsOff.includes(g) ? '' : ' checked'}> ${esc(label)}</label><br>`).join('\n')}
+${(Object.entries(TOOL_GROUPS) as [ToolGroup, string][]).map(([g, label]) => `<label><input type="checkbox" name="group_${g}" value="1"${effectiveGroupsOff(st).includes(g) ? '' : ' checked'}> ${esc(label)}${DEFAULT_OFF.includes(g) ? ' <small>(по умолчанию выключено: персональные данные)</small>' : ''}</label><br>`).join('\n')}
 <h2>Кто пользуется MCP</h2>
 <p><small>Коды доступа Битрикс24, через запятую или с новой строки: <code>AU</code> — все сотрудники,
 <code>U7</code> — сотрудник 7, <code>D3</code> — отдел 3, <code>DR3</code> — отдел 3 с подотделами, <code>G2</code> — группа пользователей.
