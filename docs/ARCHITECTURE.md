@@ -114,6 +114,11 @@ sequenceDiagram
 Запись (шаг 5 плана) — отдельным PR: свой список сотрудников, подтверждение
 (`useMcpElicitation()` или «подготовить → выполнить»), журнал «было/стало», удалений нет.
 
+## Страница подключения
+
+`<PUBLIC_URL>/connect` (`server/lib/connect.ts`) — адрес MCP и шаги для Claude, Claude Code, Codex, Cursor, Коворк/Код,
+Hermes. Без данных и скриптов, `frame-ancestors *` — её открывает «Вид «ИИ»» модуля `shef.toolsai` в слайдере.
+
 ## Инструменты
 
 | Имя | Метод REST |

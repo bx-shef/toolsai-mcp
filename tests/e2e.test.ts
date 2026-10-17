@@ -612,4 +612,15 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(logs).not.toContain('Директор')
     fake.state.user = 7
   })
+
+  it('/connect: адрес сервера и шаги клиентов, встраивается в слайдер, без скриптов', async () => {
+    const r = await fetch(`${BASE}/connect`)
+    expect(r.status).toBe(200)
+    expect(r.headers.get('content-security-policy')).toContain('frame-ancestors *')
+    expect(r.headers.get('content-security-policy')).not.toContain('script-src')
+    const html = await r.text()
+    expect(html).toContain(`${BASE}/mcp`)
+    for (const s of ['claude mcp add --transport http bitrix24', 'codex mcp add bitrix24 --url', 'mcpServers', '«Расширения»', 'auth: oauth', 'bitrix-best-practice']) expect(html).toContain(s)
+    expect(html).not.toContain('<script')
+  })
 })
