@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   const current = await access.settings(s.memberId)
   if (body.csrf !== s.csrf) {
     setResponseStatus(event, 403)
-    return adminSettingsPage(s, current, envNote(), '', 'Форма устарела — откройте настройки заново', draft)
+    return adminSettingsPage(s, current, envNote(), '', 'Форма устарела — откройте настройки заново', draft, await licenseSection(s))
   }
   // Токены Битрикс24 администратора могли сгореть (отказ входа в MCP их забывает) — это не «не администратор»
   if (!await useServices().b24.hasTokens(s)) {
@@ -30,10 +30,10 @@ export default defineEventHandler(async (event) => {
   try {
     const saved = await access.save(s.memberId, { disabled: Boolean(body.disabled), groupsOff: parseGroupsOff(body), use: parseCodes(draft.use), write: parseCodes(draft.write), manifests: parseManifests(draft.manifests) }, s.userId)
     console.log(JSON.stringify({ kind: 'admin', portal: s.host, member: s.memberId, user: s.userId, action: 'settings', disabled: saved.disabled, groupsOff: saved.groupsOff, use: saved.use.length, write: saved.write.length, manifests: saved.manifests.length }))
-    return adminSettingsPage(s, saved, envNote(), 'Сохранено')
+    return adminSettingsPage(s, saved, envNote(), 'Сохранено', '', undefined, await licenseSection(s))
   }
   catch (e) {
     setResponseStatus(event, 400)
-    return adminSettingsPage(s, current, envNote(), '', e instanceof Error ? e.message : 'Ошибка', draft)
+    return adminSettingsPage(s, current, envNote(), '', e instanceof Error ? e.message : 'Ошибка', draft, await licenseSection(s))
   }
 })
