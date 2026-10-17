@@ -269,6 +269,14 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(JSON.parse(tasks.body.result.content[0].text)).toMatchObject({ tasks: [{ id: '1' }], next: null, total: 1 })
   })
 
+  it('список CRM отдаёт имена ответственных и названия стадий', async () => {
+    const t = await fullToken()
+    const call = await mcp(t.access_token, 'tools/call', { name: 'crm_item_list', arguments: { entity: 'deal', filter: { '@id': [3, 4] } } })
+    const out = JSON.parse(call.body.result.content[0].text)
+    expect(out.users).toEqual({ 1: 'Имя1 Фамилия' })
+    expect(out.items).toHaveLength(2)
+  })
+
   it('портал отозвал вход — наш токен и refresh перестают работать, клиент войдёт заново', async () => {
     const t = await fullToken()
     fake.state.revoked = true

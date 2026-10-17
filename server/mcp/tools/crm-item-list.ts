@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 export default defineMcpTool({
   name: 'crm_item_list',
-  description: 'Поиск записей CRM (до 50 за раз; ещё есть — next, передать в start). Фильтр по правилам crm.item.list, поля в camelCase: {"stageId":"NEW", ">opportunity":1000, "%title":"окна", "assignedById":5, "<updatedTime":"2026-10-01"}. Видны только записи, доступные сотруднику.',
+  description: 'Поиск записей CRM (до 50 за раз; ещё есть — next, передать в start). Фильтр по правилам crm.item.list, поля в camelCase: {"stageId":"NEW", ">opportunity":1000, "%title":"окна", "assignedById":5, "<updatedTime":"2026-10-01"}. Видны только записи, доступные сотруднику. В ответе словари users (ID → имя) и stages (код → название).',
   annotations: READ_ONLY,
   inputSchema: {
     entity: crmEntity,
@@ -20,6 +20,12 @@ export default defineMcpTool({
       order: { [args.order]: 'DESC' },
       start: args.start,
     }, args)
-    return { items: res.result?.items ?? [], next: res.next ?? null, total: res.total }
+    const items = (res.result?.items ?? []) as Record<string, unknown>[]
+    // Словари имён: ответственный и стадия — то, о чём спрашивают первым делом
+    const [users, stages] = await Promise.all([
+      userNames('crm_item_list', items.flatMap(i => [i.assignedById, i.createdBy])),
+      stageNames('crm_item_list', etid, items),
+    ])
+    return { items, users, stages, next: res.next ?? null, total: res.total }
   },
 })
