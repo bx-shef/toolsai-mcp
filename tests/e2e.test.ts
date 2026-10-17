@@ -175,7 +175,8 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(list.status).toBe(200)
     const names = list.body.result.tools.map((x: any) => x.name)
     expect(names).toEqual(expect.arrayContaining(['user_current', 'crm_item_get', 'crm_item_list', 'crm_fields', 'crm_stages', 'task_list']))
-    for (const tool of list.body.result.tools) expect(tool.annotations?.readOnlyHint).toBe(true)
+    // без права записи — только чтение; исключение — свой рабочий день
+    for (const tool of list.body.result.tools) if (tool.name !== 'worktime_action') expect(tool.annotations?.readOnlyHint).toBe(true)
 
     const call = await mcp(t.access_token, 'tools/call', { name: 'crm_item_get', arguments: { entity: 'deal', id: 42 } })
     const out = JSON.parse(call.body.result.content[0].text)
@@ -413,7 +414,7 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     // чужая форма без csrf — отказ; мусор вместо кодов — отказ, ничего не сохранено
     expect((await save({ csrf: 'x', use: 'U7' })).status).toBe(403)
     expect((await save({ csrf, use: 'ivanov' })).status).toBe(400)
-    const all = { group_crm: '1', group_tasks: '1', group_calendar: '1', group_kb: '1', group_messages: '1', group_modules: '1' }
+    const all = { group_crm: '1', group_tasks: '1', group_calendar: '1', group_kb: '1', group_messages: '1', group_worktime: '1', group_modules: '1' }
     const saved = await save({ csrf, use: 'U7', write: '', manifests: 'shef.mcp.tools', ...all })
     expect(saved.status).toBe(200)
     expect(await saved.text()).toContain('Сохранено')
@@ -479,6 +480,10 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     const plain = await fullToken()
     const names = (await mcp(plain.access_token, 'tools/list')).body.result.tools.map((x: any) => x.name)
     expect(names).not.toContain('task_create')
+    // свой рабочий день — без права записи: меняет только состояние самого сотрудника
+    const wt = await mcp(plain.access_token, 'tools/call', { name: 'worktime_action', arguments: { action: 'open' } })
+    expect(JSON.parse(wt.body.result.content[0].text)).toEqual({ status: { было: 'CLOSED', стало: 'OPENED' }, start: 't0', finish: null })
+    expect(JSON.parse((await mcp(plain.access_token, 'tools/call', { name: 'worktime_status', arguments: {} })).body.result.content[0].text).status).toBe('OPENED')
     fake.state.user = 1 // администратор портала пишет всегда
     const t = await fullToken()
     const tools = Object.fromEntries((await mcp(t.access_token, 'tools/list')).body.result.tools.map((x: any) => [x.name, x]))
