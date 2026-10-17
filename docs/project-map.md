@@ -35,6 +35,7 @@
 | #32 | `crm_find` ([#22](https://github.com/bx-shef/toolsai-mcp/issues/22)): лиды, контакты, компании по телефону и почте, дубли |
 | #33 | Подзадачи ([#23](https://github.com/bx-shef/toolsai-mcp/issues/23)): `task_create` с `parentId`, `task_list` по `PARENT_ID` |
 | #34 | Сообщения ([#24](https://github.com/bx-shef/toolsai-mcp/issues/24)): `im_chats`, `im_message_send` (с правом записи), новая группа «Сообщения» на `/admin` |
+| #35 | Рабочее время ([#25](https://github.com/bx-shef/toolsai-mcp/issues/25)): `worktime_status`, `worktime_action` — свой день без права записи, группа на `/admin` |
 | #6 | Инструменты своих модулей: манифест (`MODULE_MANIFESTS`), только методы своего вендора, только ключи из схемы, запись и удаление — `WRITE_USERS` — [`MODULE_TOOLS.md`](MODULE_TOOLS.md) |
 
 ## Не готово

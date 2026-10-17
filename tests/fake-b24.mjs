@@ -96,6 +96,8 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
       if (method === 'crm.item.get' && Number(p.entityTypeId) === 1) return json(400, { error: 'ERROR_METHOD_NOT_FOUND', error_description: 'Method not found!' })
       if (method === 'crm.item.get' && Number(p.id) === 404) return json(400, { error: 'NOT_FOUND', error_description: 'Элемент не найден' })
       if (method === 'crm.item.get') return json(200, { result: { item: { id: Number(p.id), title: `Сделка ${p.id}`, stageId: state.deal.stageId, post: state.deal.post, _asUser: uid } } })
+      const tm = /^timeman\.(status|open|pause|close)$/.exec(method)
+      if (tm) { if (tm[1] !== 'status') state.worktime = { open: 'OPENED', pause: 'PAUSED', close: 'CLOSED' }[tm[1]]; return json(200, { result: { STATUS: state.worktime ?? 'CLOSED', TIME_START: 't0', TIME_FINISH: null } }) }
       if (method === 'im.recent.list') return json(200, { result: { items: [{ id: 8, type: 'user', title: 'Пётр' }, { id: 'chat2', type: 'chat', title: 'Общий чат' }] } })
       if (method === 'im.message.add') return String(p.DIALOG_ID) === 'chat999' ? json(400, { error: 'CHAT_ID', error_description: 'Ошибка при создании сообщения' }) : json(200, { result: 136 })
       if (method === 'crm.duplicate.findbycomm') return json(200, { result: p.type === 'PHONE' ? { CONTACT: [46, 48], COMPANY: [9] } : [] })

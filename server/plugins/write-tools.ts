@@ -37,7 +37,8 @@ async function checkCrmFields(etid: number, fields: Record<string, unknown>) {
 }
 
 type Handler = (args: any) => Promise<unknown>
-interface Def { title: string, description: string, input: Record<string, z.ZodType>, handler: Handler }
+/** own — меняет только состояние самого сотрудника (его рабочий день): нужен не «право записи», а включённая группа. */
+interface Def { title: string, description: string, input: Record<string, z.ZodType>, handler: Handler, own?: boolean }
 
 const defs: Record<(typeof WRITE_TOOLS)[number], Def> = {
   crm_item_update: {
@@ -73,6 +74,18 @@ const defs: Record<(typeof WRITE_TOOLS)[number], Def> = {
       // im.message.add — .bitrix-docs/b24-rest-docs/api-reference/chats/messages/im-message-add.md; проверено 2026-10-17
       const res = await b24Call('im_message_send', 'im.message.add', { DIALOG_ID: a.dialogId, MESSAGE: a.text }, a)
       return { dialogId: a.dialogId, messageId: res.result }
+    },
+  },
+  worktime_action: {
+    title: 'Рабочий день: начать, пауза, закончить',
+    description: 'Начать рабочий день или продолжить после паузы (open), перерыв (pause), закончить день (close). Только свой день.',
+    own: true,
+    input: { action: z.enum(['open', 'pause', 'close']) },
+    handler: async (a) => {
+      // timeman.open/pause/close — .bitrix-docs/b24-rest-docs/api-reference/timeman/base/; проверено 2026-10-17
+      const before = (await b24Call('worktime_action', 'timeman.status', {}, {})).result?.STATUS ?? null
+      const r = (await b24Call('worktime_action', `timeman.${a.action}`, {}, a)).result ?? {}
+      return { status: { было: before, стало: r.STATUS ?? null }, start: r.TIME_START ?? null, finish: r.TIME_FINISH ?? null }
     },
   },
   task_create: {
@@ -243,12 +256,14 @@ const defs: Record<(typeof WRITE_TOOLS)[number], Def> = {
 export default defineNitroPlugin((nitroApp) => {
   nitroApp.hooks.hook('mcp:server:created', async ({ server, event }) => {
     const session = event.context.session as Session | undefined
-    if (!session || !await useServices().access.canWrite(session)) return
+    if (!session) return
+    const writer = await useServices().access.canWrite(session)
     const off = await useServices().access.groupsOff(session)
     for (const name of WRITE_TOOLS) {
       const g = toolGroup(name)
       if (g && off.has(g)) continue
       const d = defs[name]
+      if (!writer && !d.own) continue
       server.registerTool(name, { title: d.title, description: d.description, inputSchema: d.input as never, annotations: WRITE }, (async (args: Record<string, unknown>) => {
         try {
           return { content: [{ type: 'text' as const, text: JSON.stringify(await d.handler(args), null, 2) }] }
