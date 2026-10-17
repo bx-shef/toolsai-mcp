@@ -18,6 +18,7 @@ export const TOOL_GROUPS = {
   messages: 'Сообщения: список чатов, написать сотруднику или в чат',
   worktime: 'Рабочее время: начать, пауза, закончить свой день',
   disk: 'Диск: папки и файлы, создать папку, переместить',
+  catalog: 'Каталог: товары, цены, остатки, описания',
   modules: 'Инструменты модулей портала',
 } as const
 export type ToolGroup = keyof typeof TOOL_GROUPS
@@ -31,6 +32,7 @@ export function toolGroup(name: string): ToolGroup | null {
   if (name.startsWith('im_')) return 'messages'
   if (name.startsWith('worktime_')) return 'worktime'
   if (name.startsWith('disk_')) return 'disk'
+  if (name.startsWith('catalog_')) return 'catalog'
   return null
 }
 

@@ -107,6 +107,22 @@ const defs: Record<(typeof WRITE_TOOLS)[number], Def> = {
       return { id: a.id, name: after.NAME ?? before.NAME, folder: { было: Number(before.PARENT_ID), стало: Number(after.PARENT_ID) } }
     },
   },
+  catalog_product_update: {
+    title: 'Изменить товар',
+    description: 'Название, краткое (previewText) или подробное (detailText) описание товара — например, сгенерированное ИИ. Ответ — что было и что стало.',
+    input: { id, name: z.string().min(1).max(255).optional(), previewText: z.string().max(20000).optional(), detailText: z.string().max(100000).optional() },
+    handler: async (a) => {
+      const fields: Record<string, unknown> = {}
+      for (const k of ['name', 'previewText', 'detailText'] as const) if (a[k] !== undefined) fields[k] = a[k]
+      if (!Object.keys(fields).length) throw createError({ statusCode: 400, message: 'Нечего менять: name, previewText или detailText' })
+      const before = (await b24Call('catalog_product_update', 'catalog.product.get', { id: a.id }, { id: a.id })).result?.product ?? {}
+      // catalog.product.update — проверено 2026-10-17: ответ result.element
+      const after = (await b24Call('catalog_product_update', 'catalog.product.update', { id: a.id, fields }, a)).result?.element ?? {}
+      const changes: Record<string, { было: unknown, стало: unknown }> = {}
+      for (const k of Object.keys(fields)) changes[k] = { было: before[k] ?? null, стало: after[k] ?? null }
+      return { id: a.id, changes }
+    },
+  },
   task_create: {
     title: 'Создать задачу',
     description: 'Создать задачу или подзадачу (parentId — ID родительской: так проект раскладывается на шаги). Ответственный по умолчанию — сам сотрудник. crm — привязки вида D_12 (сделка), L_3 (лид), C_5 (контакт), CO_7 (компания).',
