@@ -59,7 +59,7 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
         return json(200, { result: state.admins.has(uid) || codes.includes('AU') || codes.includes(`U${uid}`) })
       }
       // Запись в задачи: состояние одной задачи 30
-      if (method === 'tasks.task.add') return json(200, { result: { note: { id: 3, collectionId: 1, title: 'Отпуск', markdown: '# Отпуск\nТекст', isArchived: false }, task: { id: '30', title: p.fields.TITLE, status: '2', responsibleId: String(p.fields.RESPONSIBLE_ID), deadline: p.fields.DEADLINE ?? null } } })
+      if (method === 'tasks.task.add') return json(200, { result: { task: { id: '30', title: p.fields.TITLE, status: '2', responsibleId: String(p.fields.RESPONSIBLE_ID), deadline: p.fields.DEADLINE ?? null, parentId: p.fields.PARENT_ID ? String(p.fields.PARENT_ID) : null } } })
       if (method === 'tasks.task.update') { Object.assign(state.task, { title: p.fields.TITLE ?? state.task.title, deadline: p.fields.DEADLINE ?? state.task.deadline }); return json(200, { result: { task: { ...state.task } } }) }
       const act = /^tasks\.task\.(start|pause|complete|defer|renew)$/.exec(method)
       if (act) { state.task.status = { start: '3', pause: '2', complete: '5', defer: '6', renew: '2' }[act[1]]; return json(200, { result: { task: { ...state.task } } }) }
