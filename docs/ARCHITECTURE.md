@@ -119,8 +119,8 @@ sequenceDiagram
 | Имя | Метод REST |
 |---|---|
 | `user_current` | `user.current` |
-| `crm_deal_list` | `crm.deal.list` (до 50, фильтр как у метода; `next`/`total` — следующая страница) |
-| `crm_deal_get`, `crm_lead_get`, `crm_contact_get`, `crm_company_get` | `crm.<сущность>.get` |
+| `crm_item_list`, `crm_item_get` | `crm.item.list`, `crm.item.get` — сделки, лиды, контакты, компании, смарт-процессы (замена DEPRECATED `crm.deal.*` и т.п.); список до 50, `next`/`total` — следующая страница) |
+| `crm_fields`, `crm_stages` | `crm.item.fields`; `crm.category.list` + `crm.status.list` (ENTITY_ID: `DEAL_STAGE[_<воронка>]`, `STATUS`, `DYNAMIC_<тип>_STAGE_<воронка>`) |
 | `crm_activity_list` | `crm.activity.list` по владельцу, можно только звонки |
 | `task_list`, `task_get` | `tasks.task.list`, `tasks.task.get` |
 | `task_checklist`, `task_elapsed`, `task_results` | `task.checklistitem.getlist`, `task.elapseditem.getlist`, `tasks.task.result.list` |
@@ -133,6 +133,7 @@ sequenceDiagram
 
 | Имя | Метод REST |
 |---|---|
+| `crm_item_update`, `crm_item_add` | `crm.item.update` / `add` — только поля из `crm.item.fields`, не только для чтения; «было → стало» |
 | `task_create`, `task_update` | `tasks.task.add`, `tasks.task.update` (+ `tasks.task.get` для «было») |
 | `task_status` | `tasks.task.start` / `pause` / `complete` / `defer` / `renew` |
 | `task_checklist_add`, `task_checklist_done` | `task.checklistitem.add`, `task.checklistitem.complete` / `renew` |

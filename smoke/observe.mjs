@@ -124,11 +124,16 @@ try {
 
   const cases = [
     ['user_current', {}],
-    ['crm_deal_get', { id: deal }],
-    ['crm_deal_list', { filter: { '%TITLE': RUN } }],
-    ['crm_lead_get', { id: lead }],
-    ['crm_contact_get', { id: contact }],
-    ['crm_company_get', { id: company }],
+    ['crm_item_get', { entity: 'deal', id: deal }],
+    ['crm_item_list', { entity: 'deal', filter: { '%title': RUN } }],
+    ['crm_item_get', { entity: 'lead', id: lead }],
+    ['crm_item_get', { entity: 'contact', id: contact }],
+    ['crm_item_get', { entity: 'company', id: company }],
+    ['crm_fields', { entity: 'deal' }],
+    ['crm_stages', { entity: 'deal' }],
+    ['crm_stages', { entity: 'lead' }],
+    ['crm_item_update', { entity: 'deal', id: deal, fields: { title: `${RUN} Сделка изм`, opportunity: 2500 } }, 'запись: было → стало'],
+    ['crm_item_update', { entity: 'deal', id: deal, fields: { bogus: 1 } }, 'неизвестное поле — отказ до портала'],
     ['crm_activity_list', { ownerType: 'deal', ownerId: deal }],
     ['task_list', { filter: { '%TITLE': RUN } }],
     ['task_get', { id: task }, 'ID строкой, как его отдаёт task_list'],
@@ -141,9 +146,9 @@ try {
     ['note_search', { query: 'базы знаний' }, 'REST v3'],
     ['note_get', { id: 3 }, 'REST v3'],
     ['note_get', { id: 999999 }, 'REST v3: нет такой статьи'],
-    ['crm_deal_get', { id: 999999999 }, 'нет такой сделки'],
-    ['crm_deal_get', { id: -1 }, 'неверный аргумент'],
-    ['crm_deal_get', { id: deal }, 'access истёк на портале', () => { expireNext = true }],
+    ['crm_item_get', { entity: 'deal', id: 999999999 }, 'нет такой сделки'],
+    ['crm_item_get', { entity: 'deal', id: -1 }, 'неверный аргумент'],
+    ['crm_item_get', { entity: 'deal', id: deal }, 'access истёк на портале', () => { expireNext = true }],
   ]
   for (const [name, args, why, before] of cases) {
     before?.()

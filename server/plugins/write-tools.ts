@@ -24,10 +24,47 @@ async function taskFields(taskId: number) {
   return result.task as Record<string, unknown>
 }
 
+/**
+ * Только существующие и изменяемые поля сущности (crm.item.fields): модель не протащит служебное
+ * (id, createdBy …) и опечатку, которую портал молча проигнорировал бы. Ошибка — с перечнем.
+ */
+async function checkCrmFields(etid: number, fields: Record<string, unknown>) {
+  const keys = Object.keys(fields)
+  if (!keys.length) throw createError({ statusCode: 400, message: 'Нечего менять: fields пуст' })
+  const known = (await b24Call('crm_fields', 'crm.item.fields', { entityTypeId: etid }, {})).result?.fields ?? {}
+  const bad = keys.filter(k => !known[k] || known[k].isReadOnly)
+  if (bad.length) throw createError({ statusCode: 400, message: `Поля не существуют или только для чтения: ${bad.join(', ')} — коды смотрите в crm_fields` })
+}
+
 type Handler = (args: any) => Promise<unknown>
 interface Def { title: string, description: string, input: Record<string, z.ZodType>, handler: Handler }
 
 const defs: Record<(typeof WRITE_TOOLS)[number], Def> = {
+  crm_item_update: {
+    title: 'Изменить запись CRM',
+    description: 'Изменить поля сделки, лида, контакта, компании или смарт-процесса. Коды полей — crm_fields (только не readOnly), стадии — crm_stages (stageId). Телефоны и почта — поле fm: [{"typeId":"PHONE","valueType":"WORK","value":"+375…"}]. Ответ — что было и что стало.',
+    input: { entity: crmEntity, id, fields: z.record(z.string(), z.unknown()) },
+    handler: async (a) => {
+      const etid = entityTypeId(a.entity)
+      await checkCrmFields(etid, a.fields)
+      const before = (await b24Call('crm_item_update', 'crm.item.get', { entityTypeId: etid, id: a.id }, { entity: a.entity, id: a.id })).result?.item ?? {}
+      const after = (await b24Call('crm_item_update', 'crm.item.update', { entityTypeId: etid, id: a.id, fields: a.fields }, { entity: a.entity, id: a.id, ...a.fields })).result?.item ?? {}
+      const changes: Record<string, { было: unknown, стало: unknown }> = {}
+      for (const k of Object.keys(a.fields)) changes[k] = { было: before[k] ?? null, стало: after[k] ?? null }
+      return { entityTypeId: etid, id: a.id, changes }
+    },
+  },
+  crm_item_add: {
+    title: 'Создать запись CRM',
+    description: 'Создать сделку, лид, контакт, компанию или элемент смарт-процесса. Коды полей — crm_fields. Ответственный по умолчанию — сам сотрудник.',
+    input: { entity: crmEntity, fields: z.record(z.string(), z.unknown()) },
+    handler: async (a) => {
+      const etid = entityTypeId(a.entity)
+      await checkCrmFields(etid, a.fields)
+      const item = (await b24Call('crm_item_add', 'crm.item.add', { entityTypeId: etid, fields: a.fields }, { entity: a.entity, ...a.fields })).result?.item ?? {}
+      return { entityTypeId: etid, id: item.id, title: item.title ?? [item.name, item.lastName].filter(Boolean).join(' ') }
+    },
+  },
   task_create: {
     title: 'Создать задачу',
     description: 'Создать задачу. Ответственный по умолчанию — сам сотрудник. crm — привязки вида D_12 (сделка), L_3 (лид), C_5 (контакт), CO_7 (компания).',

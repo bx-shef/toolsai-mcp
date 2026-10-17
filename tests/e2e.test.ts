@@ -174,17 +174,17 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     const list = await mcp(t.access_token, 'tools/list')
     expect(list.status).toBe(200)
     const names = list.body.result.tools.map((x: any) => x.name)
-    expect(names).toEqual(expect.arrayContaining(['user_current', 'crm_deal_get', 'crm_deal_list', 'task_list']))
+    expect(names).toEqual(expect.arrayContaining(['user_current', 'crm_item_get', 'crm_item_list', 'crm_fields', 'crm_stages', 'task_list']))
     for (const tool of list.body.result.tools) expect(tool.annotations?.readOnlyHint).toBe(true)
 
-    const call = await mcp(t.access_token, 'tools/call', { name: 'crm_deal_get', arguments: { id: 42 } })
+    const call = await mcp(t.access_token, 'tools/call', { name: 'crm_item_get', arguments: { entity: 'deal', id: 42 } })
     const out = JSON.parse(call.body.result.content[0].text)
-    expect(out).toMatchObject({ ID: '42', _asUser: 7 })
+    expect(out).toMatchObject({ id: 42, _asUser: 7 })
     // REST ушёл токеном СОТРУДНИКА, а не общим
-    const rest = fake.calls.filter((c: any) => /^\/rest\/crm\.deal\.get(\.json)?$/.test(c.path)).at(-1)
-    expect(rest.body.auth).toMatch(/^at\d+$/)
+    const rest = fake.calls.filter((c: any) => /^\/rest\/crm\.item\.get(\.json)?$/.test(c.path)).at(-1)
+    expect(rest.body).toMatchObject({ entityTypeId: 2, id: 42, auth: expect.stringMatching(/^at\d+$/) })
     // журнал: имена аргументов, без значений
-    expect(logs).toMatch(/"kind":"audit","portal":"localhost","member":"fake0member1","user":7,"tool":"crm_deal_get","method":"crm.deal.get","args":\["id"\],"ok":true/)
+    expect(logs).toMatch(/"kind":"audit","portal":"localhost","member":"fake0member1","user":7,"tool":"crm_item_get","method":"crm.item.get","args":\["entity","id"\],"ok":true/)
   })
 
   it('код одноразовый, PKCE и redirect_uri проверяются', async () => {
@@ -255,15 +255,15 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
   it('истёкший токен Битрикс24 обновляется сам', async () => {
     const t = await fullToken()
     fake.state.expireNext = true
-    const call = await mcp(t.access_token, 'tools/call', { name: 'crm_deal_get', arguments: { id: 5 } })
+    const call = await mcp(t.access_token, 'tools/call', { name: 'crm_item_get', arguments: { entity: 'deal', id: 5 } })
     expect(call.body.result.isError).not.toBe(true)
     expect(fake.calls.some((c: any) => c.path === '/oauth/token/' && c.query.grant_type === 'refresh_token')).toBe(true)
   })
 
   it('списки отдают next и total', async () => {
     const t = await fullToken()
-    const call = await mcp(t.access_token, 'tools/call', { name: 'crm_deal_list', arguments: { start: 50 } })
-    expect(JSON.parse(call.body.result.content[0].text)).toMatchObject({ deals: [{ ID: '51' }], next: 100, total: 120 })
+    const call = await mcp(t.access_token, 'tools/call', { name: 'crm_item_list', arguments: { entity: 'deal', start: 50 } })
+    expect(JSON.parse(call.body.result.content[0].text)).toMatchObject({ items: [{ id: 51 }], next: 100, total: 120 })
     const tasks = await mcp(t.access_token, 'tools/call', { name: 'task_list', arguments: {} })
     expect(JSON.parse(tasks.body.result.content[0].text)).toMatchObject({ tasks: [{ id: '1' }], next: null, total: 1 })
   })
@@ -272,7 +272,7 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     const t = await fullToken()
     fake.state.revoked = true
     try {
-      const call = await mcp(t.access_token, 'tools/call', { name: 'crm_deal_get', arguments: { id: 1 } })
+      const call = await mcp(t.access_token, 'tools/call', { name: 'crm_item_get', arguments: { entity: 'deal', id: 1 } })
       expect(call.body.result.isError).toBe(true)
       expect((await mcp(t.access_token, 'tools/list')).status).toBe(401)
       const r = await token({ grant_type: 'refresh_token', refresh_token: t.refresh_token, client_id: t.clientId })
@@ -285,7 +285,7 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
 
   it('ошибка Битрикс24 — isError с кодом, не падение', async () => {
     const t = await fullToken()
-    const call = await mcp(t.access_token, 'tools/call', { name: 'crm_lead_get', arguments: { id: 1 } })
+    const call = await mcp(t.access_token, 'tools/call', { name: 'crm_item_get', arguments: { entity: 'lead', id: 1 } })
     expect(call.body.result.isError).toBe(true)
     expect(call.body.result.content[0].text).toContain('ERROR_METHOD_NOT_FOUND')
   })
@@ -293,7 +293,7 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
   it('нет записи — понятное «не найдено», ID строкой принимается', async () => {
     const t = await fullToken()
     const text = async (name: string, args: object) => (await mcp(t.access_token, 'tools/call', { name, arguments: args })).body.result
-    const deal = await text('crm_deal_get', { id: 404 })
+    const deal = await text('crm_item_get', { entity: 'deal', id: 404 })
     expect(deal.isError).toBe(true)
     expect(deal.content[0].text).toContain('Не найдено')
     const task = await text('task_get', { id: '404' })
@@ -321,7 +321,7 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(tools.kb_search.inputSchema.required).toEqual(['query'])
     expect(tools.kb_delete).toBeUndefined() // WRITE_USERS не задан
     expect(tools.evil).toBeUndefined() // crm.deal.delete — не метод модуля
-    expect(tools.crm_deal_get.description).not.toContain('перекрыть')
+    expect(tools.crm_item_get.description).not.toContain('перекрыть')
     const call = await mcp(t.access_token, 'tools/call', { name: 'kb_search', arguments: { query: 'отпуск' } })
     expect(JSON.parse(call.body.result.content[0].text)).toMatchObject({ result: [{ title: 'Статья про отпуск', _asUser: 7 }], total: 1 })
     const rest = fake.calls.filter((c: any) => /^\/rest\/shef\.kb\.search/.test(c.path)).at(-1)
@@ -438,7 +438,7 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     const names = (await mcp(adm.access_token, 'tools/list')).body.result.tools.map((x: any) => x.name)
     expect(names.filter((n: string) => n.startsWith('crm_'))).toEqual([])
     expect(names).toContain('task_create')
-    expect((await mcp(adm.access_token, 'tools/call', { name: 'crm_deal_get', arguments: { id: 1 } })).body.result?.isError ?? true).toBe(true)
+    expect((await mcp(adm.access_token, 'tools/call', { name: 'crm_item_get', arguments: { entity: 'deal', id: 1 } })).body.result?.isError ?? true).toBe(true)
     // главный выключатель: закрыто всем, и администратору, и уже выданный токен перестаёт действовать
     expect((await save({ csrf, use: 'U7', manifests: 'shef.mcp.tools', ...all, disabled: '1' })).status).toBe(200)
     expect((await mcp(adm.access_token, 'tools/list')).status).toBe(401)
@@ -536,5 +536,37 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     const names = (await mcp(plain.access_token, 'tools/list')).body.result.tools.map((x: any) => x.name)
     expect(names).toContain('note_search')
     expect(names).not.toContain('note_add')
+  })
+
+  it('CRM через crm.item.*: поля, стадии, изменение «было → стало» только известных полей', async () => {
+    fake.state.user = 1
+    const t = await fullToken()
+    const call = async (name: string, args: object) => {
+      const r = await mcp(t.access_token, 'tools/call', { name, arguments: args })
+      return { err: r.body.result.isError, data: r.body.result.isError ? r.body.result.content[0].text : JSON.parse(r.body.result.content[0].text) }
+    }
+    const fields = (await call('crm_fields', { entity: 'deal' })).data
+    expect(fields).toContainEqual({ code: 'id', title: 'ID', type: 'integer', readOnly: true })
+    expect(fields).toContainEqual({ code: 'ufCrmList', title: 'Список', type: 'enumeration', items: [{ id: 1, value: 'А' }] })
+    // воронки и стадии: общая — DEAL_STAGE, другая — DEAL_STAGE_<id>
+    expect((await call('crm_stages', { entity: 'deal' })).data).toEqual([
+      { categoryId: 0, name: 'Общая', stages: [{ id: 'NEW', name: 'Новая', semantics: 'process' }] },
+      { categoryId: 3, name: 'Опт', stages: [{ id: 'C3:NEW', name: 'Новая', semantics: 'process' }] },
+    ])
+    // смарт-процесс — по ID типа
+    await call('crm_item_get', { entity: 1044, id: 5 })
+    expect(fake.calls.at(-1).body).toMatchObject({ entityTypeId: 1044, id: 5 })
+    expect(await call('crm_item_update', { entity: 'deal', id: 5, fields: { stageId: 'WON', post: 'Директор' } })).toEqual({ err: undefined, data: { entityTypeId: 2, id: 5, changes: { stageId: { было: 'NEW', стало: 'WON' }, post: { было: null, стало: 'Директор' } } } })
+    // неизвестное и только для чтения — отказ до портала
+    const updates = () => fake.calls.filter((c: any) => c.path.startsWith('/rest/crm.item.update')).length
+    const n = updates()
+    const bad = await call('crm_item_update', { entity: 'deal', id: 5, fields: { id: 9, bogus: 1 } })
+    expect(bad.err).toBe(true)
+    expect(bad.data).toContain('id, bogus')
+    expect(updates()).toBe(n)
+    expect((await call('crm_item_add', { entity: 'contact', fields: { title: 'Новый' } })).data).toEqual({ entityTypeId: 3, id: 77, title: 'Новый' })
+    // значения полей в журнал не попадают
+    expect(logs).not.toContain('Директор')
+    fake.state.user = 7
   })
 })
