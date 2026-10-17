@@ -9,7 +9,30 @@ import type { Store } from './store'
 // документации user.access проходит всегда — поэтому пустая настройка = «только администраторы».
 // Списки из .env (ALLOWED_USERS, WRITE_USERS, MODULE_MANIFESTS) остаются запасным путём и добавляются.
 
+/** Группы инструментов, которые администратор включает и выключает на /admin. */
+export const TOOL_GROUPS = {
+  crm: 'CRM: сделки, лиды, контакты, компании, дела',
+  tasks: 'Задачи: чтение, комментарии, чек-листы, время',
+  calendar: 'Календарь: события, занятость, встречи',
+  kb: 'База знаний',
+  modules: 'Инструменты модулей портала',
+} as const
+export type ToolGroup = keyof typeof TOOL_GROUPS
+
+/** Группа инструмента — по приставке имени; user_current — всегда (без него клиент не знает, кто вошёл). */
+export function toolGroup(name: string): ToolGroup | null {
+  if (name.startsWith('crm_')) return 'crm'
+  if (name.startsWith('task_')) return 'tasks'
+  if (name.startsWith('calendar_')) return 'calendar'
+  if (name.startsWith('note_')) return 'kb'
+  return null
+}
+
 export interface PortalSettings {
+  /** Главный выключатель портала (как «Разрешить внешним AI-системам…» у Битрикс24): true — MCP закрыт всем. */
+  disabled: boolean
+  /** Выключенные группы инструментов. Пусто — включены все. */
+  groupsOff: ToolGroup[]
   /** Коды доступа: кто пользуется MCP. Пусто — только администраторы портала. */
   use: string[]
   /** Коды доступа: кому инструменты модулей на запись и удаление. Пусто — только администраторы. */
@@ -22,7 +45,7 @@ export interface PortalSettings {
   updatedAt?: number
 }
 
-const EMPTY: PortalSettings = { use: [], write: [], manifests: [], ver: 0 }
+const EMPTY: PortalSettings = { disabled: false, groupsOff: [], use: [], write: [], manifests: [], ver: 0 }
 const MAX = 100
 /** Проверка прав живёт 5 минут: user.access на каждый запрос к /mcp — лишняя нагрузка на портал. */
 const CHECK_TTL = 300
@@ -54,9 +77,9 @@ export class Access {
     return { ...EMPTY, ...await this.store.get<PortalSettings>(`settings:${memberId}`) }
   }
 
-  async save(memberId: string, s: Pick<PortalSettings, 'use' | 'write' | 'manifests'>, by: number): Promise<PortalSettings> {
+  async save(memberId: string, s: Pick<PortalSettings, 'disabled' | 'groupsOff' | 'use' | 'write' | 'manifests'>, by: number): Promise<PortalSettings> {
     const prev = await this.settings(memberId)
-    const next: PortalSettings = { use: s.use, write: s.write, manifests: s.manifests, ver: prev.ver + 1, updatedBy: by, updatedAt: Date.now() }
+    const next: PortalSettings = { disabled: s.disabled, groupsOff: s.groupsOff, use: s.use, write: s.write, manifests: s.manifests, ver: prev.ver + 1, updatedBy: by, updatedAt: Date.now() }
     // Без срока по смыслу — 10 лет: Store требует TTL.
     await this.store.put(`settings:${memberId}`, next, 10 * 365 * 24 * 3600)
     return next
@@ -96,8 +119,16 @@ export class Access {
 
   async canUse(w: Who): Promise<boolean> {
     if (!w.host || !w.memberId) return false
+    const s = await this.settings(w.memberId)
+    // Выключатель портала сильнее всего, и .env тоже: портал решает за себя
+    if (s.disabled) return false
     if (this.cfg.isAllowed(w)) return true
-    return this.has(w, 'use', await this.settings(w.memberId))
+    return this.has(w, 'use', s)
+  }
+
+  /** Выключенные группы инструментов портала. */
+  async groupsOff(w: Who): Promise<Set<ToolGroup>> {
+    return new Set((await this.settings(w.memberId)).groupsOff)
   }
 
   async canWrite(w: Who): Promise<boolean> {
@@ -108,6 +139,12 @@ export class Access {
 
   async manifests(w: Who): Promise<string[]> {
     const s = await this.settings(w.memberId)
+    if (s.groupsOff.includes('modules')) return []
     return [...new Set([...this.cfg.moduleManifests, ...s.manifests])]
   }
+}
+
+/** Флажки групп из формы (group_<код>=on — отмечена, значит включена) → выключенные группы. */
+export function parseGroupsOff(body: Record<string, unknown>): ToolGroup[] {
+  return (Object.keys(TOOL_GROUPS) as ToolGroup[]).filter(g => !body[`group_${g}`])
 }
