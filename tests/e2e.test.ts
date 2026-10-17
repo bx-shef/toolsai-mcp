@@ -414,7 +414,7 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     // чужая форма без csrf — отказ; мусор вместо кодов — отказ, ничего не сохранено
     expect((await save({ csrf: 'x', use: 'U7' })).status).toBe(403)
     expect((await save({ csrf, use: 'ivanov' })).status).toBe(400)
-    const all = { group_crm: '1', group_tasks: '1', group_calendar: '1', group_kb: '1', group_messages: '1', group_worktime: '1', group_modules: '1' }
+    const all = { group_crm: '1', group_tasks: '1', group_calendar: '1', group_kb: '1', group_messages: '1', group_worktime: '1', group_disk: '1', group_modules: '1' }
     const saved = await save({ csrf, use: 'U7', write: '', manifests: 'shef.mcp.tools', ...all })
     expect(saved.status).toBe(200)
     expect(await saved.text()).toContain('Сохранено')
@@ -585,6 +585,13 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect((await call('im_message_send', { dialogId: 'all', text: 'x' })).err).toBe(true)
     expect((await call('im_message_send', { dialogId: 'chat999', text: 'x' })).data).toContain('CHAT_ID')
     expect(logs).not.toContain('Дайджест')
+    // Диск: ссылку на скачивание с токеном модель не получает
+    expect((await call('disk_storages', {})).data).toEqual([{ id: 1, name: 'Мой', type: 'user', rootFolderId: 1 }])
+    const folder = await call('disk_folder', { folderId: 1 })
+    expect(folder.data.items[0]).toEqual({ id: 72, name: 'a.txt', type: 'file', size: 5, updatedBy: 1, updatedAt: 't', url: 'https://p/disk/72' })
+    expect(JSON.stringify(folder.data)).not.toContain('SECRET')
+    expect((await call('disk_folder_add', { parentId: 1, name: 'Счета' })).data).toEqual({ id: 70, name: 'Счета', parentId: 1 })
+    expect((await call('disk_move', { id: 72, type: 'file', targetFolderId: 70 })).data).toEqual({ id: 72, name: 'a.txt', folder: { было: 1, стало: 70 } })
     // значения полей в журнал не попадают
     expect(logs).not.toContain('Директор')
     fake.state.user = 7

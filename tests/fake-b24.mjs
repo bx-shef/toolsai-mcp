@@ -98,6 +98,11 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
       if (method === 'crm.item.get') return json(200, { result: { item: { id: Number(p.id), title: `Сделка ${p.id}`, stageId: state.deal.stageId, post: state.deal.post, _asUser: uid } } })
       const tm = /^timeman\.(status|open|pause|close)$/.exec(method)
       if (tm) { if (tm[1] !== 'status') state.worktime = { open: 'OPENED', pause: 'PAUSED', close: 'CLOSED' }[tm[1]]; return json(200, { result: { STATUS: state.worktime ?? 'CLOSED', TIME_START: 't0', TIME_FINISH: null } }) }
+      if (method === 'disk.storage.getlist') return json(200, { result: [{ ID: '1', NAME: 'Мой', ENTITY_TYPE: 'user', ROOT_OBJECT_ID: '1' }] })
+      if (method === 'disk.folder.getchildren') return json(200, { result: [{ ID: '72', NAME: 'a.txt', TYPE: 'file', SIZE: '5', UPDATED_BY: '1', UPDATE_TIME: 't', DETAIL_URL: 'https://p/disk/72', DOWNLOAD_URL: 'https://p/dl?auth=SECRET' }], total: 1 })
+      if (method === 'disk.folder.addsubfolder') return json(200, { result: { ID: '70', NAME: p.data.NAME, PARENT_ID: String(p.id) } })
+      if (method === 'disk.file.get') return json(200, { result: { ID: String(p.id), NAME: 'a.txt', PARENT_ID: '1' } })
+      if (method === 'disk.file.moveto') return json(200, { result: { ID: String(p.id), NAME: 'a.txt', PARENT_ID: String(p.targetFolderId) } })
       if (method === 'im.recent.list') return json(200, { result: { items: [{ id: 8, type: 'user', title: 'Пётр' }, { id: 'chat2', type: 'chat', title: 'Общий чат' }] } })
       if (method === 'im.message.add') return String(p.DIALOG_ID) === 'chat999' ? json(400, { error: 'CHAT_ID', error_description: 'Ошибка при создании сообщения' }) : json(200, { result: 136 })
       if (method === 'crm.duplicate.findbycomm') return json(200, { result: p.type === 'PHONE' ? { CONTACT: [46, 48], COMPANY: [9] } : [] })

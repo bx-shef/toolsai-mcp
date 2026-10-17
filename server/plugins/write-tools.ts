@@ -88,6 +88,25 @@ const defs: Record<(typeof WRITE_TOOLS)[number], Def> = {
       return { status: { было: before, стало: r.STATUS ?? null }, start: r.TIME_START ?? null, finish: r.TIME_FINISH ?? null }
     },
   },
+  disk_folder_add: {
+    title: 'Создать папку на Диске',
+    description: 'Новая папка внутри папки parentId (ID из disk_storages/disk_folder).',
+    input: { parentId: id, name: z.string().min(1).max(255) },
+    handler: async (a) => {
+      const f = (await b24Call('disk_folder_add', 'disk.folder.addsubfolder', { id: a.parentId, data: { NAME: a.name } }, a)).result ?? {}
+      return { id: Number(f.ID), name: f.NAME, parentId: Number(f.PARENT_ID) }
+    },
+  },
+  disk_move: {
+    title: 'Переместить на Диске',
+    description: 'Переместить файл или папку в другую папку (наведение порядка). Удаления нет.',
+    input: { id, type: z.enum(['file', 'folder']), targetFolderId: id },
+    handler: async (a) => {
+      const before = (await b24Call('disk_move', `disk.${a.type}.get`, { id: a.id }, { id: a.id })).result ?? {}
+      const after = (await b24Call('disk_move', `disk.${a.type}.moveto`, { id: a.id, targetFolderId: a.targetFolderId }, a)).result ?? {}
+      return { id: a.id, name: after.NAME ?? before.NAME, folder: { было: Number(before.PARENT_ID), стало: Number(after.PARENT_ID) } }
+    },
+  },
   task_create: {
     title: 'Создать задачу',
     description: 'Создать задачу или подзадачу (parentId — ID родительской: так проект раскладывается на шаги). Ответственный по умолчанию — сам сотрудник. crm — привязки вида D_12 (сделка), L_3 (лид), C_5 (контакт), CO_7 (компания).',
