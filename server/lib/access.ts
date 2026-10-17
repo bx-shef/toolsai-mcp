@@ -19,6 +19,7 @@ export const TOOL_GROUPS = {
   worktime: 'Рабочее время: начать, пауза, закончить свой день',
   disk: 'Диск: папки и файлы, создать папку, переместить',
   catalog: 'Каталог: товары, цены, остатки, описания',
+  calls: 'Телефония: статистика звонков',
   modules: 'Инструменты модулей портала',
 } as const
 export type ToolGroup = keyof typeof TOOL_GROUPS
@@ -33,6 +34,7 @@ export function toolGroup(name: string): ToolGroup | null {
   if (name.startsWith('worktime_')) return 'worktime'
   if (name.startsWith('disk_')) return 'disk'
   if (name.startsWith('catalog_')) return 'catalog'
+  if (name.startsWith('calls_')) return 'calls'
   return null
 }
 

@@ -414,7 +414,7 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     // чужая форма без csrf — отказ; мусор вместо кодов — отказ, ничего не сохранено
     expect((await save({ csrf: 'x', use: 'U7' })).status).toBe(403)
     expect((await save({ csrf, use: 'ivanov' })).status).toBe(400)
-    const all = { group_crm: '1', group_tasks: '1', group_calendar: '1', group_kb: '1', group_messages: '1', group_worktime: '1', group_disk: '1', group_catalog: '1', group_modules: '1' }
+    const all = { group_crm: '1', group_tasks: '1', group_calendar: '1', group_kb: '1', group_messages: '1', group_worktime: '1', group_disk: '1', group_catalog: '1', group_calls: '1', group_modules: '1' }
     const saved = await save({ csrf, use: 'U7', write: '', manifests: 'shef.mcp.tools', ...all })
     expect(saved.status).toBe(200)
     expect(await saved.text()).toContain('Сохранено')
@@ -601,6 +601,13 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect((await call('crm_doc_templates', { entity: 'deal' })).data).toEqual([{ id: 2, name: 'Акт', region: 'by' }])
     expect((await call('crm_doc_create', { templateId: 2, entity: 'deal', id: 40 })).data).toEqual({ documentId: 5, title: 'Акт 1', number: '1', downloadUrl: 'https://p/ajax.php?action=crm.documentgenerator.document.download&id=5', pdfUrl: 'https://p/ajax.php?action=crm.documentgenerator.document.getPdf&id=5' })
     expect(fake.calls.at(-1).body).toMatchObject({ templateId: 2, entityTypeId: 2, entityId: 40 })
+    // звонки: период в фильтре, входящие — типы 2 и 3, сводка, запись разговора не отдаётся
+    const calls = (await call('calls_stats', { from: '2026-10-01', to: '2026-10-17', type: 'incoming' })).data
+    expect(fake.calls.at(-1).body.FILTER).toEqual({ '>=CALL_START_DATE': '2026-10-01T00:00:00', '<=CALL_START_DATE': '2026-10-17T23:59:59', CALL_TYPE: [2, 3] })
+    expect(calls.summary).toEqual({ calls: 2, missed: 1, minutes: 2 })
+    expect(calls.items[1]).toMatchObject({ ok: false, failed: 'Пропущенный', type: 'входящий' })
+    expect(calls.items[0].crm).toEqual({ type: 'CONTACT', id: 5 })
+    expect(JSON.stringify(calls)).not.toContain('SECRET')
     // значения полей в журнал не попадают
     expect(logs).not.toContain('Директор')
     fake.state.user = 7
