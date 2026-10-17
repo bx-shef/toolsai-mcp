@@ -6,7 +6,7 @@ import { BUILTIN_TOOLS } from '../server/lib/manifest'
 
 const md = (dir: string): string[] => readdirSync(dir).flatMap((f) => {
   const p = join(dir, f)
-  if (['node_modules', '.nuxt', '.output', '.git'].includes(f)) return []
+  if (['node_modules', '.nuxt', '.output', '.git', '.bitrix-docs'].includes(f)) return []
   return statSync(p).isDirectory() ? md(p) : p.endsWith('.md') ? [p] : []
 })
 

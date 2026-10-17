@@ -6,3 +6,4 @@ node_modules/
 redis/
 .env.b24test
 smoke/out/
+.bitrix-docs/

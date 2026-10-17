@@ -136,7 +136,8 @@ sequenceDiagram
 | `task_create`, `task_update` | `tasks.task.add`, `tasks.task.update` (+ `tasks.task.get` для «было») |
 | `task_status` | `tasks.task.start` / `pause` / `complete` / `defer` / `renew` |
 | `task_checklist_add`, `task_checklist_done` | `task.checklistitem.add`, `task.checklistitem.complete` / `renew` |
-| `task_comment_add` | `task.commentitem.add` (у новых задач попадает в чат задачи — проверено) |
+| `task_comment_add` | `tasks.task.chat.message.send` (REST v3); нет метода (старая коробка) — `task.commentitem.add` (DEPRECATED) |
+| `task_result_add` | `tasks.task.result.add` (REST v3) — отметка «Результат» |
 | `task_time_add` | `task.elapseditem.add` |
 | `note_add`, `note_update` | `note.document.add`, `note.document.update` (без `overwrite`: статью, открытую в редакторе, не затираем) |
 | `calendar_event_add` | `calendar.event.add` в своём календаре; с участниками — встреча (проверено 2026-10-16) |

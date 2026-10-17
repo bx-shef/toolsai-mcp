@@ -8,7 +8,8 @@
     "start": "node .output/server/index.mjs",
     "test": "vitest run",
     "smoke": "node smoke/observe.mjs",
-    "typecheck": "nuxt prepare && tsc --noEmit -p server/tsconfig.json"
+    "typecheck": "nuxt prepare && tsc --noEmit -p server/tsconfig.json",
+    "docs:bitrix": "mkdir -p .bitrix-docs && (test -d .bitrix-docs/b24-rest-docs/.git && git -C .bitrix-docs/b24-rest-docs pull -q --depth 1 || git clone -q --depth 1 https://github.com/bitrix-tools/b24-rest-docs.git .bitrix-docs/b24-rest-docs)"
   },
   "engines": {
     "node": ">=22"
