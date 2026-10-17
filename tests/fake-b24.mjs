@@ -109,6 +109,8 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
       if (method === 'catalog.price.list') return json(200, { result: { prices: [{ catalogGroupId: 1, price: 100, currency: 'BYN' }] } })
       if (method === 'catalog.storeproduct.list') return json(200, { result: { storeProducts: [{ storeId: 1, amount: 3, quantityReserved: 1 }] } })
       if (method === 'catalog.product.update') { Object.assign(state.product, p.fields); return json(200, { result: { element: { id: p.id, ...state.product } } }) }
+      if (method === 'crm.documentgenerator.template.list') return json(200, { result: { templates: p.filter?.entityTypeId === '2_category_0' ? { 2: { id: '2', name: 'Акт', region: 'by' } } : {} } })
+      if (method === 'crm.documentgenerator.document.add') return json(200, { result: { document: { id: 5, title: 'Акт 1', number: '1', downloadUrl: 'https://p/ajax.php?action=crm.documentgenerator.document.download&id=5' } } })
       if (method === 'im.recent.list') return json(200, { result: { items: [{ id: 8, type: 'user', title: 'Пётр' }, { id: 'chat2', type: 'chat', title: 'Общий чат' }] } })
       if (method === 'im.message.add') return String(p.DIALOG_ID) === 'chat999' ? json(400, { error: 'CHAT_ID', error_description: 'Ошибка при создании сообщения' }) : json(200, { result: 136 })
       if (method === 'crm.duplicate.findbycomm') return json(200, { result: p.type === 'PHONE' ? { CONTACT: [46, 48], COMPANY: [9] } : [] })

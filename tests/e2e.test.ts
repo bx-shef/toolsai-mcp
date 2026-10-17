@@ -597,6 +597,10 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(fake.calls.filter((c: any) => c.path.startsWith('/rest/catalog.product.list')).at(-1).body.filter).toEqual({ iblockId: 24, '%name': 'Окно' })
     expect((await call('catalog_product_get', { id: 4 })).data).toMatchObject({ prices: [{ priceTypeId: 1, price: 100, currency: 'BYN' }], stores: [{ storeId: 1, amount: 3, reserved: 1 }] })
     expect((await call('catalog_product_update', { id: 4, detailText: 'Новое' })).data).toEqual({ id: 4, changes: { detailText: { было: 'старое', стало: 'Новое' } } })
+    // документы: шаблоны по привязке «2_category_<воронка>», документ с ссылками на DOCX и PDF
+    expect((await call('crm_doc_templates', { entity: 'deal' })).data).toEqual([{ id: 2, name: 'Акт', region: 'by' }])
+    expect((await call('crm_doc_create', { templateId: 2, entity: 'deal', id: 40 })).data).toEqual({ documentId: 5, title: 'Акт 1', number: '1', downloadUrl: 'https://p/ajax.php?action=crm.documentgenerator.document.download&id=5', pdfUrl: 'https://p/ajax.php?action=crm.documentgenerator.document.getPdf&id=5' })
+    expect(fake.calls.at(-1).body).toMatchObject({ templateId: 2, entityTypeId: 2, entityId: 40 })
     // значения полей в журнал не попадают
     expect(logs).not.toContain('Директор')
     fake.state.user = 7
