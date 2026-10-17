@@ -1,7 +1,7 @@
 // Сквозной тест СОБРАННОГО сервера (.output, сначала `npm run build`) против подставного Битрикс24:
 // метаданные → регистрация клиента → вход через портал → наш токен → инструмент от имени сотрудника.
 import { spawn, type ChildProcess } from 'node:child_process'
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash, generateKeyPairSync, randomBytes, sign } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 // @ts-expect-error plain JS helper
@@ -618,6 +618,42 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(JSON.stringify(calls)).not.toContain('SECRET')
     // значения полей в журнал не попадают
     expect(logs).not.toContain('Директор')
+    fake.state.user = 7
+  })
+
+  it('лицензия: без неё инструменты отвечают 402, администратор ставит сертификат на /admin — работает', async () => {
+    const { publicKey, privateKey } = generateKeyPairSync('ed25519')
+    const raw = publicKey.export({ format: 'der', type: 'spki' }).subarray(12).toString('base64')
+    app.kill()
+    await new Promise(r => setTimeout(r, 300))
+    start({ LICENSE_REQUIRED: '1', LICENSE_PUBLIC_KEYS: `t1:${raw}` })
+    await waitUp()
+    fake.state.user = 1
+    const t = await fullToken()
+    const denied = await mcp(t.access_token, 'tools/call', { name: 'user_current', arguments: {} })
+    expect(denied.body.result.isError).toBe(true)
+    expect(denied.body.result.content[0].text).toContain('Лицензия MCP')
+    // администратор входит на /admin и вставляет сертификат, подписанный ключом сервера лицензий
+    const r = await fetch(`${BASE}/admin/login`, { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'portal=test.bitrix24.by' })
+    const back = await portalReturn(new URL(r.headers.get('location')!).searchParams.get('state')!, r.headers.getSetCookie().find(c => c.startsWith('mcp_admin_login='))!.split(';')[0]!)
+    const cookie = back.headers.getSetCookie().find(c => c.startsWith('mcp_admin='))!.split(';')[0]!
+    const page = await (await fetch(`${BASE}/admin`, { headers: { cookie } })).text()
+    expect(page).toContain('<h2>Лицензия</h2>')
+    expect(page).toContain('1200 BYN')
+    const csrf = /name="csrf" value="([^"]+)"/.exec(page)![1]!
+    const now = Math.floor(Date.now() / 1000)
+    const fp = createHash('sha256').update('bxl-fp-v1|install|fake0member1').digest('hex')
+    const body = `BXL1.${Buffer.from(JSON.stringify({ v: 1, kid: 't1', product: 'shef.toolsai-mcp', type: 'annual', fp, expires_at: now + 365 * 86400, valid_until: now + 14 * 86400, max_major: 1 })).toString('base64url')}`
+    const cert = `${body}.${sign(null, Buffer.from(body), privateKey).toString('base64url')}`
+    const post = (form: Record<string, string>) => fetch(`${BASE}/admin/license`, { method: 'POST', headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ csrf, ...form }) })
+    const bad = await post({ action: 'install', cert: cert.replace(/.$/, c => c === 'A' ? 'B' : 'A') })
+    expect(bad.status).toBe(400)
+    const ok = await post({ action: 'install', cert })
+    expect(ok.status).toBe(200)
+    expect(await ok.text()).toContain('Лицензия действует: годовая')
+    expect(logs).toMatch(/"action":"license.install","ok":true/)
+    const works = await mcp(t.access_token, 'tools/call', { name: 'user_current', arguments: {} })
+    expect(works.body.result.isError).toBeFalsy()
     fake.state.user = 7
   })
 

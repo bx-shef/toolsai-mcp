@@ -9,6 +9,10 @@ import type { Session } from '../lib/oauth'
 export async function b24Call(tool: string, method: string, params: Record<string, unknown>, args: object = {}) {
   const session = useEvent().context.session as Session | undefined
   if (!session) throw createError({ statusCode: 401, message: 'Нет сессии' })
+  // Лицензия портала: без неё ИИ не работает с порталом (при LICENSE_REQUIRED=1)
+  if (!await useServices().license.allowed(session.memberId)) {
+    throw createError({ statusCode: 402, message: 'Лицензия MCP на этот портал не активирована или истекла. Администратор Битрикс24 активирует её в настройках: /admin → «Лицензия».' })
+  }
   const started = Date.now()
   try {
     const res = await useServices().b24.call(session, method, params)

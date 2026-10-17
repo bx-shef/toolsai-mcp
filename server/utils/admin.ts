@@ -74,11 +74,12 @@ export function adminLoginPage(portal: string, error = '') {
 <button class="b ok">Войти через Битрикс24</button></form>`)
 }
 
-export function adminSettingsPage(s: AdminSession, st: PortalSettings, envNote: string, msg = '', error = '', draft?: Record<string, string>) {
+export function adminSettingsPage(s: AdminSession, st: PortalSettings, envNote: string, msg = '', error = '', draft?: Record<string, string>, lic = '') {
   const base = useServices().cfg.publicUrl
   const v = (k: 'use' | 'write' | 'manifests') => esc(draft?.[k] ?? st[k].join('\n'))
   return page('Настройки MCP', `<p>Портал <b>${esc(s.host)}</b>, вы — <b>${esc(s.name || `сотрудник ${s.userId}`)}</b> (администратор).</p>
 ${msg ? `<p class="done">${esc(msg)}</p>` : ''}${error ? `<p class="err">${esc(error)}</p>` : ''}
+${lic}
 <form method="post" action="${esc(base)}/admin/save"><input type="hidden" name="csrf" value="${esc(s.csrf)}">
 <h2>MCP на портале</h2>
 <p><label><input type="checkbox" name="disabled" value="1"${st.disabled ? ' checked' : ''}> <b>Выключить MCP для всех</b></label><br>
@@ -111,4 +112,27 @@ export function envNote(): string {
   if (process.env.WRITE_USERS?.trim()) parts.push(`запись: WRITE_USERS=${process.env.WRITE_USERS.trim()}`)
   if (process.env.MODULE_MANIFESTS?.trim()) parts.push(`модули: MODULE_MANIFESTS=${process.env.MODULE_MANIFESTS.trim()}`)
   return parts.length ? `Сервер дополнительно открывает из своего .env — ${parts.join('; ')}.` : ''
+}
+
+/** Раздел «Лицензия» (bx-shef/license-server): состояние и действия. Ключ на странице не показываем. */
+export async function licenseSection(s: AdminSession): Promise<string> {
+  const { cfg, license } = useServices()
+  const st = await license.status(s.memberId)
+  if (st.mode === 'unconfigured') return ''
+  const base = esc(cfg.publicUrl)
+  const ok = st.mode === 'active'
+  const f = (action: string, inner: string, button: string) => `<form method="post" action="${base}/admin/license"><input type="hidden" name="csrf" value="${esc(s.csrf)}"><input type="hidden" name="action" value="${action}">${inner}<button class="b${action === 'activate' || action === 'trial' ? ' ok' : ''}">${button}</button></form>`
+  const eula = `<p><label><input type="checkbox" name="eula" value="1" required> Принимаю <a href="https://license.bx-shef.by/eula/shef.toolsai-mcp" target="_blank" rel="noopener">лицензионное соглашение</a></label></p>`
+  return `<h2>Лицензия</h2>
+<p class="${ok && !st.warning && !st.noLink ? 'done' : 'err'}">${esc(st.message)}</p>
+${!license.required ? '<p><small>Сервер пока работает и без лицензии (LICENSE_REQUIRED не включён).</small></p>' : ''}
+${st.error ? `<p><small>Последняя ошибка сервера лицензий: ${esc(st.error)}</small></p>` : ''}
+${st.eulaPending ? f('accept', `<p>Вышла новая редакция соглашения (${esc(st.eulaPending)}).</p>${eula}`, 'Принять') : ''}
+<p><small>Годовая лицензия — 1200 BYN за портал, тестовая — 15 дней бесплатно. Лицензия привязана к порталу (member_id), а не к домену.</small></p>
+${f('activate', `<p><label>Ключ лицензии<br><input class="i" name="key" autocomplete="off" required></label></p>${eula}`, 'Активировать ключ')}
+${st.key ? `${f('renew', '', 'Обновить сертификат сейчас')}` : `<details><summary>Тестовая лицензия на 15 дней</summary>${f('trial', `<p><label>Организация<br><input class="i" name="name" required></label></p><p><label>УНП<br><input class="i" name="unp" required pattern="\\d{9}"></label></p><p><label>E-mail<br><input class="i" name="email" type="email" required></label></p>${eula}`, 'Получить тестовую')}</details>`}
+<details><summary>Переезд и ручной сертификат</summary>
+${f('rebind', `<p><small>Ключ, уже активированный на другом портале, перепривязывается сюда; старая привязка снимается (до 3 раз в год).</small></p><p><label>Ключ<br><input class="i" name="key" autocomplete="off"></label></p>${eula.replace(' required', '')}`, 'Перепривязать')}
+${f('install', '<p><label>Сертификат от разработчика<br><textarea class="i" name="cert" rows="3"></textarea></label></p>', 'Установить сертификат')}
+</details>`
 }

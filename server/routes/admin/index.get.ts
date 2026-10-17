@@ -5,5 +5,5 @@ export default defineEventHandler(async (event) => {
   const s = await adminSession(event)
   const { cfg, access } = useServices()
   if (!s) return adminLoginPage(getCookie(event, PORTAL_COOKIE) || cfg.defaultPortal || '')
-  return adminSettingsPage(s, await access.settings(s.memberId), envNote())
+  return adminSettingsPage(s, await access.settings(s.memberId), envNote(), '', '', undefined, await licenseSection(s))
 })
