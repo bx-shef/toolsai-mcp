@@ -7,7 +7,9 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
   let n = 0
   const tokens = new Map() // access -> userId
   const refresh = new Map() // refresh -> userId
-  const state = { user: 7, expireNext: false, revoked: false, manifestFail: false, admins: new Set([1]), deal: { stageId: 'NEW', post: null }, product: { detailText: 'старое' }, note: { id: 3, collectionId: 1, title: 'Отпуск', markdown: '# Отпуск\nТекст', isArchived: false }, task: { id: '30', title: 'Было', status: '2', deadline: null, responsibleId: '1' } }
+  // Дата рождения через N дней от сегодня (год любой) — staff_birthdays считает от текущей даты
+  const birthdayIn = n => { const d = new Date(Date.now() + n * 86400000); return `1990-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}T03:00:00+03:00` }
+  const state = { user: 7, expireNext: false, revoked: false, manifestFail: false, admins: new Set([1]), deal: { stageId: 'NEW', post: null }, product: { detailText: 'старое' }, note: { id: 3, collectionId: 1, title: 'Отпуск', markdown: '# Отпуск\nТекст', isArchived: false }, task: { id: '30', title: 'Было', status: '2', deadline: null, responsibleId: '1' }, birthdays: { soon: birthdayIn(2), far: birthdayIn(40) } }
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x')
     let body = ''
@@ -94,7 +96,7 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
       if (method === 'im.dialog.messages.get') return json(200, { result: { chat_id: 28, messages: [{ id: 2, author_id: 7, date: 'd', text: 'готово' }, { id: 1, author_id: 0, date: 'd', text: 'создал задачу' }] } })
       if (method === 'task.commentitem.getlist') return json(200, { result: [{ ID: '5', AUTHOR_ID: '7', POST_DATE: 'd', POST_MESSAGE: 'старый коммент' }] })
       if (method === 'user.current') return json(200, { result: { ID: String(uid), NAME: 'Тест', LAST_NAME: 'Тестов' } })
-      if (method === 'user.get') return json(200, { result: (p.FILTER?.ID ?? []).map(id => ({ ID: String(id), NAME: 'Имя' + id, LAST_NAME: 'Фамилия' })) })
+      if (method === 'user.get' && p.FILTER?.ID) return json(200, { result: (p.FILTER?.ID ?? []).map(id => ({ ID: String(id), NAME: 'Имя' + id, LAST_NAME: 'Фамилия' })) })
       // CRM через crm.item.* (замер 2026-10-17): нет записи — NOT_FOUND; лид — «нет метода», чтобы проверить ошибку портала
       if (method === 'crm.item.get' && Number(p.entityTypeId) === 1) return json(400, { error: 'ERROR_METHOD_NOT_FOUND', error_description: 'Method not found!' })
       if (method === 'crm.item.get' && Number(p.id) === 403) return json(400, { error: 'ACCESS_DENIED', error_description: 'секрет ядра /var/www' })
@@ -119,6 +121,27 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
         { CALL_ID: 'a', CALL_START_DATE: 'd', PORTAL_USER_ID: '7', CALL_TYPE: '2', PHONE_NUMBER: '+375291112233', CALL_DURATION: '120', CALL_FAILED_CODE: '200', CRM_ENTITY_TYPE: 'CONTACT', CRM_ENTITY_ID: '5', CALL_RECORD_URL: 'https://p/rec?token=SECRET' },
         { CALL_ID: 'b', CALL_START_DATE: 'd', PORTAL_USER_ID: '7', CALL_TYPE: '2', PHONE_NUMBER: '+375291112244', CALL_DURATION: '0', CALL_FAILED_CODE: '304', CALL_FAILED_REASON: 'Пропущенный' },
       ], total: 2 })
+      if (method === 'batch') {
+        // Подставной batch: счёт по стадии из запроса команды; другие методы в batch не нужны
+        const total = {}
+        for (const [k, q] of Object.entries(p.cmd ?? {})) total[k] = ({ NEW: 10, WORK: 4, WON: 2, LOSE: 3 })[new URLSearchParams(String(q).split('?')[1]).get('filter[stageId]')] ?? 0
+        return json(200, { result: { result: {}, result_error: [], result_total: total, result_next: [] } })
+      }
+      if (method === 'crm.status.list' && p.filter?.ENTITY_ID === 'STATUS') return json(200, { result: [
+        { STATUS_ID: 'NEW', NAME: 'Новая', EXTRA: { SEMANTICS: 'process' } }, { STATUS_ID: 'WORK', NAME: 'В работе', EXTRA: { SEMANTICS: 'process' } },
+        { STATUS_ID: 'WON', NAME: 'Успех', EXTRA: { SEMANTICS: 'success' } }, { STATUS_ID: 'LOSE', NAME: 'Провал', EXTRA: { SEMANTICS: 'failure' } },
+      ] })
+      if (method === 'user.get') return json(200, p.start ? { result: [{ ID: '9', NAME: 'Ян', LAST_NAME: '', WORK_POSITION: '', PERSONAL_BIRTHDAY: state.birthdays.far }], total: 2 } : { result: [
+        { ID: '3', NAME: 'Анна', LAST_NAME: 'Сидорова', WORK_POSITION: 'Бухгалтер', PERSONAL_BIRTHDAY: state.birthdays.soon },
+        { ID: '4', NAME: 'Пётр', LAST_NAME: 'Иванов', WORK_POSITION: '', PERSONAL_BIRTHDAY: '' },
+      ], next: 1, total: 3 })
+      if (method === 'booking.v1.booking.list') return json(200, { result: { booking: [
+        { id: 31, name: 'Замер', resourceIds: [5], datePeriod: { from: { timestamp: 1792227600, timezone: 'Europe/Minsk' }, to: { timestamp: 1792231200, timezone: 'Europe/Minsk' } }, isConfirmed: false, description: 'Просили утро' },
+      ] }, total: 0 })
+      if (method === 'booking.v1.resource.list') return json(200, { result: { resource: [{ id: 5, name: 'Кабинет 2' }] }, total: 0 })
+      if (method === 'crm.activity.list' && p.filter?.PROVIDER_ID === 'IMOPENLINES_SESSION') return json(200, { result: [
+        { ID: '81', SUBJECT: 'Не приходит счёт', START_TIME: '2026-10-17T10:00:00+03:00', COMPLETED: 'N', RESPONSIBLE_ID: '7', OWNER_TYPE_ID: '1', OWNER_ID: '4', PROVIDER_TYPE_ID: 'telegrambot', DESCRIPTION: 'SECRET переписка' },
+      ], total: 1 })
       if (method === 'im.recent.list') return json(200, { result: { items: [{ id: 8, type: 'user', title: 'Пётр' }, { id: 'chat2', type: 'chat', title: 'Общий чат' }] } })
       if (method === 'im.message.add') return String(p.DIALOG_ID) === 'chat999' ? json(400, { error: 'CHAT_ID', error_description: 'Ошибка при создании сообщения' }) : json(200, { result: 136 })
       if (method === 'crm.duplicate.findbycomm') return json(200, { result: p.type === 'PHONE' ? { CONTACT: [46, 48], COMPANY: [9] } : [] })

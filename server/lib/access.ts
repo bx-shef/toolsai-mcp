@@ -20,6 +20,9 @@ export const TOOL_GROUPS = {
   disk: 'Диск: папки и файлы, создать папку, переместить',
   catalog: 'Каталог: товары, цены, остатки, описания',
   calls: 'Телефония: статистика звонков',
+  booking: 'Онлайн-запись: записи на приём',
+  openlines: 'Открытые линии: обращения клиентов',
+  staff: 'Сотрудники: дни рождения',
   modules: 'Инструменты модулей портала',
 } as const
 export type ToolGroup = keyof typeof TOOL_GROUPS
@@ -35,6 +38,9 @@ export function toolGroup(name: string): ToolGroup | null {
   if (name.startsWith('disk_')) return 'disk'
   if (name.startsWith('catalog_')) return 'catalog'
   if (name.startsWith('calls_')) return 'calls'
+  if (name.startsWith('booking_')) return 'booking'
+  if (name.startsWith('openlines_')) return 'openlines'
+  if (name.startsWith('staff_')) return 'staff'
   return null
 }
 

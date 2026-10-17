@@ -137,7 +137,11 @@ cookie прошлого входа), проверяется `portalHost()`, до
 | `disk_storages`, `disk_folder` | `disk.storage.getlist`, `disk.folder.getchildren`; `DOWNLOAD_URL` не отдаётся — в нём токен доступа |
 | `catalog_list`, `catalog_products`, `catalog_product_get` | `catalog.catalog.list`, `catalog.product.list` (нужен `iblockId`), `catalog.product.get` + `catalog.price.list` + `catalog.storeproduct.list` |
 | `crm_doc_templates` | `crm.documentgenerator.template.list`, привязка `2_category_<воронка>` / `<тип>_<воронка>` / номер типа |
-| `calls_stats` | `voximplant.statistic.get` — звонки за период, сводка; запись разговора не отдаётся; на портале с телефонией не проверено |
+| `calls_stats` | `voximplant.statistic.get` — звонки за период, сводка; `missedOnly` — только пропущенные (`!CALL_FAILED_CODE: 200`); запись разговора не отдаётся; на портале с телефонией не проверено |
+| `crm_funnel` | `crm.status.list` + один `batch` из `crm.item.list` по стадиям — число записей на стадии (`result_total`), для виджета `funnel` |
+| `staff_birthdays` | `user.get` (активные сотрудники, до 10 страниц) — дни рождения на N дней вперёд; скрытая дата приходит пустой — сотрудника нет в списке |
+| `booking_list` | `booking.v1.booking.list` (`within` в секундах unix) + `booking.v1.resource.list` — записи на приём; поля брони по документации, на портале без записей не проверено |
+| `openlines_dialogs` | `crm.activity.list` с `PROVIDER_ID = IMOPENLINES_SESSION` — обращения открытых линий; текст переписки не отдаётся |
 | `im_chats` | `im.recent.list` — недавние диалоги, `dialogId` для отправки |
 | `crm_find` | `crm.duplicate.findbycomm` по телефону/почте + `crm.item.list` для названий; телефон — в международном виде |
 | `crm_fields`, `crm_stages` | `crm.item.fields`; `crm.category.list` + `crm.status.list` (ENTITY_ID: `DEAL_STAGE[_<воронка>]`, `STATUS`, `DYNAMIC_<тип>_STAGE_<воронка>`) |
@@ -170,6 +174,25 @@ cookie прошлого входа), проверяется `portalHost()`, до
 
 Набор повторяет то, что Битрикс24 сам даёт Марте с разметкой «читает» (`bx-shef/toolsai`,
 `docs/private/mcp-box.md` §1.2), но поверх REST.
+
+## Виджеты чата помощника — откуда данные
+
+Чат помощника коробки (`bx-shef/toolsai-assistant`, режим «Агент») рисует ответ виджетами. Данные портала
+для них — из этих инструментов:
+
+| виджет | инструменты |
+|---|---|
+| `funnel` | `crm_funnel` |
+| `tasks`, `task` | `task_list`, `task_get`, `task_checklist` |
+| `today` | `task_list`, `calendar_events`, `crm_activity_list`, `calls_stats` |
+| `schedule` | `calendar_events` (+ `booking_list`, `task_list`) |
+| `booking` | `booking_list` |
+| `missedcall` | `calls_stats` с `missedOnly`, `crm_find` |
+| `support` | `openlines_dialogs` |
+| `birthday` | `staff_birthdays`; само поздравление отправляет модуль чата (`greet`), не `im_message_send` |
+| `score` | `crm_activity_list` (резюме и оценка звонка в описании дела) |
+| `record`, `table`, `kpi`, `bars` | `crm_item_get`, `crm_item_list`, `crm_stages` |
+| `doc` | `note_search`, `note_get` |
 
 ## Адрес снаружи
 

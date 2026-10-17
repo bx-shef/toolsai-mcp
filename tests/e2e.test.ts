@@ -443,7 +443,7 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     // чужая форма без csrf — отказ; мусор вместо кодов — отказ, ничего не сохранено
     expect((await save({ csrf: 'x', use: 'U7' })).status).toBe(403)
     expect((await save({ csrf, use: 'ivanov' })).status).toBe(400)
-    const all = { group_crm: '1', group_tasks: '1', group_calendar: '1', group_kb: '1', group_messages: '1', group_worktime: '1', group_disk: '1', group_catalog: '1', group_calls: '1', group_modules: '1' }
+    const all = { group_crm: '1', group_tasks: '1', group_calendar: '1', group_kb: '1', group_messages: '1', group_worktime: '1', group_disk: '1', group_catalog: '1', group_calls: '1', group_booking: '1', group_openlines: '1', group_staff: '1', group_modules: '1' }
     const saved = await save({ csrf, use: 'U7', write: '', manifests: 'shef.mcp.tools', ...all })
     expect(saved.status).toBe(200)
     expect(await saved.text()).toContain('Сохранено')
@@ -637,6 +637,26 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(calls.items[1]).toMatchObject({ ok: false, failed: 'Пропущенный', type: 'входящий' })
     expect(calls.items[0].crm).toEqual({ type: 'CONTACT', id: 5 })
     expect(JSON.stringify(calls)).not.toContain('SECRET')
+    // пропущенные: оператор «!» по коду 200 в фильтре
+    await call('calls_stats', { from: '2026-10-01', to: '2026-10-17', missedOnly: true })
+    expect(fake.calls.at(-1).body.FILTER['!CALL_FAILED_CODE']).toBe('200')
+    // виджеты чата помощника (toolsai-assistant 1.11.0): воронка, дни рождения, записи, обращения
+    const funnel = (await call('crm_funnel', { entity: 'lead', createdFrom: '2026-10-01' })).data
+    expect(funnel.stages.map((x: any) => [x.id, x.semantics, x.count])).toEqual([['NEW', 'process', 10], ['WORK', 'process', 4], ['WON', 'success', 2], ['LOSE', 'failure', 3]])
+    const batch = fake.calls.at(-1)
+    expect(batch.path.startsWith('/rest/batch')).toBe(true)
+    const q = new URLSearchParams(batch.body.cmd.s1.split('?')[1])
+    // у лидов воронок нет — categoryId в фильтр не идёт
+    expect([q.get('entityTypeId'), q.get('filter[stageId]'), q.get('filter[>=createdTime]'), q.has('filter[categoryId]')]).toEqual(['1', 'WORK', '2026-10-01T00:00:00', false])
+    const birthdays = (await call('staff_birthdays', { days: 7 })).data
+    expect(birthdays.items).toEqual([{ userId: 3, name: 'Анна Сидорова', position: 'Бухгалтер', date: expect.stringMatching(/^\d{2}\.\d{2}$/), inDays: 2 }])
+    expect(fake.calls.filter((c: any) => c.path.startsWith('/rest/user.get')).length).toBeGreaterThanOrEqual(2)
+    const booking = (await call('booking_list', { from: '2026-10-17' })).data
+    expect(booking.items).toEqual([{ id: 31, name: 'Замер', from: '2026-10-17 12:00', to: '2026-10-17 13:00', resources: ['Кабинет 2'], confirmed: false, note: 'Просили утро' }])
+    expect(fake.calls.filter((c: any) => c.path.startsWith('/rest/booking.v1.booking.list')).at(-1).body.filter.within).toEqual({ dateFrom: 1792184400, dateTo: 1792270800 })
+    const dialogs = (await call('openlines_dialogs', {})).data
+    expect(dialogs.items[0]).toMatchObject({ id: 81, title: 'Не приходит счёт', channel: 'telegrambot', open: true, responsibleId: 7, crm: { entityTypeId: 1, id: 4 } })
+    expect(JSON.stringify(dialogs)).not.toContain('SECRET')
     // значения полей в журнал не попадают
     expect(logs).not.toContain('Директор')
     fake.state.user = 7

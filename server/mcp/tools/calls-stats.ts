@@ -14,12 +14,15 @@ export default defineMcpTool({
     from: day, to: day,
     userId: z.coerce.number().int().positive().optional().describe('Только звонки этого сотрудника'),
     type: z.enum(['outgoing', 'incoming']).optional(),
+    missedOnly: z.boolean().default(false).describe('Только пропущенные и неуспешные (код не 200) — для «перезвонить»'),
     start: z.coerce.number().int().min(0).default(0),
   },
   handler: async (args) => {
     const FILTER: Record<string, unknown> = { '>=CALL_START_DATE': `${args.from}T00:00:00`, '<=CALL_START_DATE': `${args.to}T23:59:59` }
     if (args.userId) FILTER.PORTAL_USER_ID = args.userId
     if (args.type) FILTER.CALL_TYPE = args.type === 'outgoing' ? 1 : [2, 3]
+    // Оператор «!» в ключе фильтра — по документации метода
+    if (args.missedOnly) FILTER['!CALL_FAILED_CODE'] = '200'
     const res = await b24Call('calls_stats', 'voximplant.statistic.get', { FILTER, SORT: 'CALL_START_DATE', ORDER: 'DESC', start: args.start }, args)
     const items = (Array.isArray(res.result) ? res.result : []).map((c: any) => ({
       id: c.CALL_ID,

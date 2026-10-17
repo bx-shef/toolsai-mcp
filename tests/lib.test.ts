@@ -159,3 +159,21 @@ describe('icon', () => {
     expect((await loadIcon(dir)).type).toBe('image/svg+xml')
   })
 })
+
+describe('дни рождения (staff_birthdays)', () => {
+  it('месяц и день из PERSONAL_BIRTHDAY, мусор и пусто — null', async () => {
+    const { monthDay } = await import('../server/lib/people')
+    expect([monthDay('1990-10-19T03:00:00+03:00'), monthDay(''), monthDay(null), monthDay('1990-13-01'), monthDay('19.10.1990')]).toEqual([{ month: 10, day: 19 }, null, null, null, null])
+  })
+  it('через сколько дней: сегодня, через Новый год, 29 февраля, прошедшие в пределах back', async () => {
+    const { daysToBirthday } = await import('../server/lib/people')
+    const d = (s: string) => new Date(`${s}T12:00:00Z`)
+    expect([
+      daysToBirthday({ month: 10, day: 17 }, d('2026-10-17')),
+      daysToBirthday({ month: 1, day: 2 }, d('2026-12-30')),
+      daysToBirthday({ month: 2, day: 29 }, d('2027-02-27')),
+      daysToBirthday({ month: 10, day: 15 }, d('2026-10-17'), 3),
+      daysToBirthday({ month: 10, day: 15 }, d('2026-10-17')),
+    ]).toEqual([0, 3, 1, -2, 363])
+  })
+})
