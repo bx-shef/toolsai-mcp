@@ -4,6 +4,11 @@
  * пусто, замер на тестовом портале 2026-10-17); берём только месяц и день.
  */
 
+/** «Сегодня» портала: сейчас + смещение пояса в минутах (дату читать через getUTC*). */
+export function portalToday(nowMs: number, offsetMin: number): Date {
+  return new Date(nowMs + offsetMin * 60000)
+}
+
 /** Месяц и день из PERSONAL_BIRTHDAY; пусто или мусор — null. */
 export function monthDay(value: unknown): { month: number, day: number } | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value ?? ''))

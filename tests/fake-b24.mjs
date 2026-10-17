@@ -9,7 +9,7 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
   const refresh = new Map() // refresh -> userId
   // Дата рождения через N дней от сегодня (год любой) — staff_birthdays считает от текущей даты
   const birthdayIn = n => { const d = new Date(Date.now() + n * 86400000); return `1990-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}T03:00:00+03:00` }
-  const state = { user: 7, expireNext: false, revoked: false, manifestFail: false, admins: new Set([1]), deal: { stageId: 'NEW', post: null }, product: { detailText: 'старое' }, note: { id: 3, collectionId: 1, title: 'Отпуск', markdown: '# Отпуск\nТекст', isArchived: false }, task: { id: '30', title: 'Было', status: '2', deadline: null, responsibleId: '1' }, birthdays: { soon: birthdayIn(2), far: birthdayIn(40) } }
+  const state = { user: 7, expireNext: false, revoked: false, manifestFail: false, admins: new Set([1]), deal: { stageId: 'NEW', post: null }, product: { detailText: 'старое' }, note: { id: 3, collectionId: 1, title: 'Отпуск', markdown: '# Отпуск\nТекст', isArchived: false }, task: { id: '30', title: 'Было', status: '2', deadline: null, responsibleId: '1' }, birthdays: { soon: birthdayIn(2), far: birthdayIn(40), yesterday: birthdayIn(-1) }, usersEndless: false, manyStages: false, resourcesPaged: false }
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x')
     let body = ''
@@ -132,17 +132,23 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
         }
         return json(200, { result: { result: {}, result_error: Object.keys(error).length ? error : [], result_total: total, result_next: [] } })
       }
+      if (method === 'crm.status.list' && p.filter?.ENTITY_ID === 'STATUS' && state.manyStages) return json(200, { result: Array.from({ length: 45 }, (_, i) => ({ STATUS_ID: `S${i}`, NAME: `Стадия ${i}`, EXTRA: { SEMANTICS: 'process' } })) })
       if (method === 'crm.status.list' && p.filter?.ENTITY_ID === 'STATUS') return json(200, { result: [
         { STATUS_ID: 'NEW', NAME: 'Новая', EXTRA: { SEMANTICS: 'process' } }, { STATUS_ID: 'WORK', NAME: 'В работе', EXTRA: { SEMANTICS: 'process' } },
         { STATUS_ID: 'WON', NAME: 'Успех', EXTRA: { SEMANTICS: 'success' } }, { STATUS_ID: 'LOSE', NAME: 'Провал', EXTRA: { SEMANTICS: 'failure' } },
       ] })
-      if (method === 'user.get') return json(200, p.start ? { result: [{ ID: '9', NAME: 'Ян', LAST_NAME: '', WORK_POSITION: '', PERSONAL_BIRTHDAY: state.birthdays.far }], total: 2 } : { result: [
+      if (method === 'user.get' && state.usersEndless) return json(200, { result: [], next: Number(p.start ?? 0) + 50, total: 5000 })
+      if (method === 'user.get') return json(200, p.start ? { result: [
+        { ID: '9', NAME: 'Ян', LAST_NAME: '', WORK_POSITION: '', PERSONAL_BIRTHDAY: state.birthdays.far },
+        { ID: '10', NAME: 'Ольга', LAST_NAME: '', WORK_POSITION: '', PERSONAL_BIRTHDAY: state.birthdays.yesterday },
+      ], total: 4 } : { result: [
         { ID: '3', NAME: 'Анна', LAST_NAME: 'Сидорова', WORK_POSITION: 'Бухгалтер', PERSONAL_BIRTHDAY: state.birthdays.soon },
         { ID: '4', NAME: 'Пётр', LAST_NAME: 'Иванов', WORK_POSITION: '', PERSONAL_BIRTHDAY: '' },
-      ], next: 1, total: 3 })
+      ], next: 1, total: 4 })
       if (method === 'booking.v1.booking.list') return json(200, { result: { booking: [
         { id: 31, name: 'Замер', resourceIds: [5], datePeriod: { from: { timestamp: 1792227600, timezone: 'Europe/Berlin' }, to: { timestamp: 1792231200, timezone: 'Europe/Berlin' } }, isConfirmed: false, description: 'Просили утро' },
       ] }, total: 0 })
+      if (method === 'booking.v1.resource.list' && state.resourcesPaged) return json(200, Number(p.start ?? 0) ? { result: { resource: [{ id: 5, name: 'Кабинет 2' }] } } : { result: { resource: [{ id: 1, name: 'Кабинет 1' }] }, next: 50 })
       if (method === 'booking.v1.resource.list') return json(200, { result: { resource: [{ id: 5, name: 'Кабинет 2' }] }, total: 0 })
       if (method === 'crm.activity.list' && p.filter?.PROVIDER_ID === 'IMOPENLINES_SESSION') return json(200, { result: [
         { ID: '81', SUBJECT: 'Не приходит счёт', START_TIME: '2026-10-17T10:00:00+03:00', COMPLETED: 'N', RESPONSIBLE_ID: '7', OWNER_TYPE_ID: '1', OWNER_ID: '4', PROVIDER_TYPE_ID: 'telegrambot', DESCRIPTION: 'SECRET переписка' },

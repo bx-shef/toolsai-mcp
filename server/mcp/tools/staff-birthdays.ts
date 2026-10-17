@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { daysToBirthday, monthDay } from '../../lib/people'
+import { daysToBirthday, monthDay, portalToday } from '../../lib/people'
 
 // user.get — .bitrix-docs/b24-rest-docs/api-reference/user/user-get.md. Фильтра по месяцу и дню у метода нет:
 // читаем активных сотрудников страницами (до 10 страниц по 50) и считаем сами. Скрытая дата рождения
@@ -16,7 +16,7 @@ export default defineMcpTool({
   },
   handler: async (args) => {
     // «Сегодня» — дата портала: в 01:30 по Минску по UTC ещё вчера
-    const today = new Date(Date.now() + args.timezoneOffsetMin * 60000)
+    const today = portalToday(Date.now(), args.timezoneOffsetMin)
     const out: Array<Record<string, unknown>> = []
     let start = 0
     let truncated = false

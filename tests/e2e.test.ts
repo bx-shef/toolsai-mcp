@@ -5,6 +5,8 @@ import { createHash, generateKeyPairSync, randomBytes, sign } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 // @ts-expect-error plain JS helper
+import { DEFAULT_OFF, toolGroup } from '../server/lib/access'
+import { BUILTIN_TOOLS } from '../server/lib/manifest'
 import { startFakeB24 } from './fake-b24.mjs'
 
 const PORT = 3911
@@ -438,6 +440,10 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     const cookie = sess.split(';')[0]!
     const page = await (await fetch(`${BASE}/admin`, { headers: { cookie } })).text()
     expect(page).toContain('Портал <b>localhost</b>') // портал — из ответа OAuth-сервера, не из формы
+    // настроек ещё нет: записи и дни рождения выключены, остальное включено
+    expect(page).toMatch(/name="group_staff" value="1">/)
+    expect(page).toMatch(/name="group_booking" value="1">/)
+    expect(page).toMatch(/name="group_crm" value="1" checked>/)
     const csrf = /name="csrf" value="([^"]+)"/.exec(page)![1]!
     const save = (form: Record<string, string>) => fetch(`${BASE}/admin/save`, { method: 'POST', headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(form) })
     // чужая форма без csrf — отказ; мусор вместо кодов — отказ, ничего не сохранено
@@ -632,6 +638,7 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(fake.calls.at(-1).body).toMatchObject({ templateId: 2, entityTypeId: 2, entityId: 40 })
     // звонки: период в фильтре, входящие — типы 2 и 3, сводка, запись разговора не отдаётся
     const calls = (await call('calls_stats', { from: '2026-10-01', to: '2026-10-17', type: 'incoming' })).data
+    // без missedOnly — без фильтра по коду
     expect(fake.calls.at(-1).body.FILTER).toEqual({ '>=CALL_START_DATE': '2026-10-01T00:00:00', '<=CALL_START_DATE': '2026-10-17T23:59:59', CALL_TYPE: [2, 3] })
     expect(calls.summary).toEqual({ calls: 2, missed: 1, minutes: 2 })
     expect(calls.items[1]).toMatchObject({ ok: false, failed: 'Пропущенный', type: 'входящий' })
@@ -661,14 +668,31 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(fake.calls.filter((c: any) => c.path.startsWith('/rest/booking.v1.booking.list')).at(-1).body.filter.within).toEqual({ dateFrom: 1792184400, dateTo: 1792270800 })
     const dialogs = (await call('crm_openlines', {})).data
     expect(dialogs.items[0]).toMatchObject({ id: 81, title: 'Не приходит счёт', connector: 'telegrambot', open: true, responsibleId: 7, responsible: 'Имя7 Фамилия', crm: { entityTypeId: 1, id: 4 } })
-    expect(fake.calls.filter((c: any) => c.path.startsWith('/rest/crm.activity.list')).at(-1).body.order).toEqual({ START_TIME: 'ASC' })
+    const lastActs = () => fake.calls.filter((c: any) => c.path.startsWith('/rest/crm.activity.list')).at(-1).body
+    expect([lastActs().order, lastActs().filter.COMPLETED]).toEqual([{ START_TIME: 'ASC' }, 'N'])
     await call('crm_openlines', { onlyOpen: false })
-    expect(fake.calls.filter((c: any) => c.path.startsWith('/rest/crm.activity.list')).at(-1).body.order).toEqual({ START_TIME: 'DESC' })
+    expect([lastActs().order, 'COMPLETED' in lastActs().filter]).toEqual([{ START_TIME: 'DESC' }, false])
     // упавшая команда batch — отказ, а не «0 на стадии»
     fake.state.funnelFail = true
     const failed = await call('crm_funnel', { entity: 'lead' })
     expect([failed.err, failed.data]).toEqual([true, expect.stringMatching(/не посчитал стадии \(1 из 4\)/)])
     fake.state.funnelFail = false
+    // больше 40 стадий: в batch 40 команд, остальное — truncated, а не молча
+    fake.state.manyStages = true
+    const big = (await call('crm_funnel', { entity: 'lead' })).data
+    expect([big.stages.length, big.truncated, Object.keys(fake.calls.at(-1).body.cmd).length]).toEqual([40, 5, 40])
+    fake.state.manyStages = false
+    // дни рождения: вчерашний — только с back; больше 500 сотрудников — truncated, ровно 10 страниц
+    expect((await call('staff_birthdays', { days: 7, back: 1 })).data.items.map((x: any) => [x.userId, x.inDays])).toEqual([[10, -1], [3, 2]])
+    fake.state.usersEndless = true
+    const before = fake.calls.filter((c: any) => c.path.startsWith('/rest/user.get')).length
+    expect((await call('staff_birthdays', {})).data.truncated).toBe('Проверены первые 500 сотрудников')
+    expect(fake.calls.filter((c: any) => c.path.startsWith('/rest/user.get')).length - before).toBe(10)
+    fake.state.usersEndless = false
+    // ресурсы записи — со второй страницы, а не «#5»
+    fake.state.resourcesPaged = true
+    expect((await call('booking_list', { from: '2026-10-17' })).data.items[0].resources).toEqual(['Кабинет 2'])
+    fake.state.resourcesPaged = false
     // смарт-процесс без воронки — основная (isDefault), а не несуществующая «0»
     expect((await call('crm_funnel', { entity: 1036 })).data.categoryId).toBe(7)
     expect(fake.calls.filter((c: any) => c.path.startsWith('/rest/crm.status.list')).at(-1).body.filter.ENTITY_ID).toBe('DYNAMIC_1036_STAGE_7')
@@ -730,7 +754,13 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     const names = new Set((await mcp(t.access_token, 'tools/list')).body.result.tools.map((x: any) => x.name))
     const used = [...html.matchAll(/<code>([a-z_]+)<\/code>/g)].map(m => m[1])
     expect(used.length).toBeGreaterThan(15)
-    for (const n of used) expect(names, n).toContain(n)
+    // группы, выключенные по умолчанию (записи, дни рождения), в списке появляются после включения на /admin —
+    // такие сверяем с реестром встроенных инструментов
+    for (const n of used) {
+      if (DEFAULT_OFF.includes(toolGroup(n)!)) expect(BUILTIN_TOOLS.has(n), n).toBe(true)
+      else expect(names, n).toContain(n)
+    }
+    expect([...names].some(n => DEFAULT_OFF.includes(toolGroup(n as string)!))).toBe(false)
     fake.state.user = 7
   })
 
