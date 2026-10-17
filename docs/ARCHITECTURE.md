@@ -1,6 +1,6 @@
 # Устройство
 
-> Last reviewed: 2026-10-16
+> Last reviewed: 2026-10-17
 
 ## Что и зачем
 
@@ -118,6 +118,14 @@ sequenceDiagram
 
 `<PUBLIC_URL>/connect` (`server/lib/connect.ts`) — адрес MCP и шаги для Claude, Claude Code, Codex, Cursor, Коворк/Код,
 Hermes. Без данных и скриптов, `frame-ancestors *` — её открывает «Вид «ИИ»» модуля `shef.toolsai` в слайдере.
+
+## Чат помощника в коробке как клиент MCP
+
+Модуль `shef.toolsaiassistant` (1.9.0, режим «Агент») — обычный клиент этого сервера: регистрация
+`/oauth/register` с `redirect_uri` на своём портале, вход с PKCE, токены сотрудника хранит портал,
+инструменты — `tools/list` и `tools/call`. Чтобы сотрудник не вводил адрес портала, клиент передаёт
+в `/oauth/authorize` подсказку `portal=<хост>`: это только значение поля на экране согласия (как
+cookie прошлого входа), проверяется `portalHost()`, доверия не даёт.
 
 ## Инструменты
 

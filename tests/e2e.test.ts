@@ -188,6 +188,17 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(logs).toMatch(/"kind":"audit","portal":"localhost","member":"fake0member1","user":7,"tool":"crm_item_get","method":"crm.item.get","args":\["entity","id"\],"ok":true/)
   })
 
+  it('подсказка портала в authorize — в поле согласия; мусор — не подставляется', async () => {
+    const reg = await register(REDIRECT)
+    const page = async (portal: string) => {
+      const auth = new URL(`${BASE}/oauth/authorize`)
+      for (const [k, v] of Object.entries({ client_id: reg.client_id, redirect_uri: REDIRECT, response_type: 'code', code_challenge: 'a'.repeat(43), code_challenge_method: 'S256', portal })) auth.searchParams.set(k, v)
+      return (await fetch(auth)).text()
+    }
+    expect(await page('https://box.example.by/crm/')).toContain('name="portal" value="box.example.by"')
+    expect(await page('"><script>')).not.toContain('<script>')
+  })
+
   it('код одноразовый, PKCE и redirect_uri проверяются', async () => {
     const { reg, verifier, back } = await login()
     const code = back.searchParams.get('code')!

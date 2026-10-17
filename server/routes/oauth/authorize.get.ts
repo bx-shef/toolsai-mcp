@@ -1,3 +1,4 @@
+import { portalHost } from '../../lib/config'
 import { PORTAL_COOKIE } from '../../utils/consent'
 
 // Ошибки здесь показываются человеку в браузере, а не уводят на непроверенный адрес клиента.
@@ -15,7 +16,11 @@ export default defineEventHandler(async (event) => {
       // завершается (найдено на живой коробке 2026-10-16). От встраивания держат frame-ancestors и X-Frame-Options.
       'Content-Security-Policy': `default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'`,
     })
-    return consentPage(txn, clientName, redirectHost, `${cfg.publicUrl}/oauth/consent`, getCookie(event, PORTAL_COOKIE) || cfg.defaultPortal || '')
+    // portal в запросе — подсказка от клиента, который знает портал (чат помощника в самой коробке):
+    // только адрес для поля, как и cookie; сотрудник всё равно входит в портал сам.
+    const q = getQuery(event)
+    const hint = typeof q.portal === 'string' ? portalHost(q.portal) : null
+    return consentPage(txn, clientName, redirectHost, `${cfg.publicUrl}/oauth/consent`, hint || getCookie(event, PORTAL_COOKIE) || cfg.defaultPortal || '')
   }
   catch (e) {
     return oauthFail(event, e)
