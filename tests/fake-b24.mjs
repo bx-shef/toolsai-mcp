@@ -96,6 +96,8 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
       if (method === 'crm.item.get' && Number(p.entityTypeId) === 1) return json(400, { error: 'ERROR_METHOD_NOT_FOUND', error_description: 'Method not found!' })
       if (method === 'crm.item.get' && Number(p.id) === 404) return json(400, { error: 'NOT_FOUND', error_description: 'Элемент не найден' })
       if (method === 'crm.item.get') return json(200, { result: { item: { id: Number(p.id), title: `Сделка ${p.id}`, stageId: state.deal.stageId, post: state.deal.post, _asUser: uid } } })
+      if (method === 'crm.duplicate.findbycomm') return json(200, { result: p.type === 'PHONE' ? { CONTACT: [46, 48], COMPANY: [9] } : [] })
+      if (method === 'crm.item.list' && p.filter?.['@id']) return json(200, { result: { items: p.filter['@id'].filter(id => id !== 9).map(id => ({ id, name: `К${id}`, assignedById: 1 })) } })
       if (method === 'crm.item.list') return json(200, { result: { items: [{ id: p.start + 1 }] }, next: p.start + 50, total: 120 })
       if (method === 'crm.item.fields') return json(200, { result: { fields: { id: { title: 'ID', type: 'integer', isReadOnly: true }, title: { title: 'Название', type: 'string' }, stageId: { title: 'Стадия', type: 'crm_status', statusType: 'DEAL_STAGE' }, post: { title: 'Должность', type: 'string' }, ufCrmList: { title: 'Список', type: 'enumeration', items: [{ ID: 1, VALUE: 'А' }] } } } })
       if (method === 'crm.item.update') { Object.assign(state.deal, p.fields); return json(200, { result: { item: { id: p.id, ...state.deal } } }) }
