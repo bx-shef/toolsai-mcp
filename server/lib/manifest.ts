@@ -110,12 +110,12 @@ export function annotationsFor(kind: ToolKind) {
 }
 
 /** Имена встроенных инструментов (server/mcp/tools): модуль их не перекрывает. Сверку держит tests/repo.test.ts. */
-export const BUILTIN_TOOLS = new Set(['user_current', 'crm_activity_list', 'crm_company_get', 'crm_contact_get', 'crm_deal_get', 'crm_deal_list', 'crm_lead_get', 'task_get', 'task_list',
+export const BUILTIN_TOOLS = new Set(['user_current', 'crm_activity_list', 'crm_item_get', 'crm_item_list', 'crm_fields', 'crm_stages', 'task_get', 'task_list',
   'calendar_events', 'calendar_busy', 'task_checklist', 'task_elapsed', 'task_results', 'task_comments',
   'note_bases', 'note_tree', 'note_search', 'note_get'])
 
 /** Встроенная запись в задачи и календарь (plugins/write-tools.ts): только тем, кому открыта запись. */
-export const WRITE_TOOLS = ['task_create', 'task_update', 'task_status', 'task_checklist_add', 'task_checklist_done', 'task_comment_add', 'task_result_add', 'task_time_add', 'calendar_event_add', 'note_add', 'note_update'] as const
+export const WRITE_TOOLS = ['crm_item_add', 'crm_item_update', 'task_create', 'task_update', 'task_status', 'task_checklist_add', 'task_checklist_done', 'task_comment_add', 'task_result_add', 'task_time_add', 'calendar_event_add', 'note_add', 'note_update'] as const
 
 /** Ключи, которые модель может передать методу: только объявленные в схеме, без служебных REST. */
 export function pickArgs(input: Record<string, unknown>, args: Record<string, unknown> | undefined): Record<string, unknown> {
