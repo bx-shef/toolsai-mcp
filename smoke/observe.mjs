@@ -73,7 +73,8 @@ const FAKE = `http://127.0.0.1:${proxy.address().port}`
 // --- засев ---
 note(`# Живой прогон ${RUN}`)
 note(`\n> Last reviewed: ${new Date().toISOString().slice(0, 10)}\n`)
-let company, contact, lead, deal, task, activity
+let company, contact, lead, deal, task, activity, product, tpl
+const made = { folders: [], docs: [], tasks: [] }
 
 // --- сервер ---
 let srvLog = ''
@@ -92,6 +93,9 @@ try {
   deal = (await hook('crm.deal.add', { fields: { TITLE: `${RUN} Сделка`, OPPORTUNITY: 1500, CURRENCY_ID: 'BYN', COMPANY_ID: company, CONTACT_ID: contact } })).result
   task = (await hook('tasks.task.add', { fields: { TITLE: `${RUN} Задача`, RESPONSIBLE_ID: 1, UF_CRM_TASK: [`D_${deal}`] } })).result.task.id
   activity = (await hook('crm.activity.todo.add', { ownerTypeId: 2, ownerId: deal, title: `${RUN} Дело`, deadline: new Date(Date.now() + 864e5).toISOString() })).result?.id
+  product = (await hook('catalog.product.add', { fields: { iblockId: 24, name: `${RUN} Товар`, previewText: 'кратко' } })).result?.element?.id
+  tpl = (await hook('crm.documentgenerator.template.list', { select: ['id'] }).catch(() => ({}))).result?.templates ?? {}; tpl = Object.values(tpl)[0]?.id
+  await hook('crm.contact.update', { id: contact, fields: { PHONE: [{ VALUE: '+375291112233', VALUE_TYPE: 'WORK' }], EMAIL: [{ VALUE: `${RUN}@example.com`, VALUE_TYPE: 'WORK' }] } })
   note(`Засеяно: компания ${company}, контакт ${contact}, лид ${lead}, сделка ${deal}, задача ${task}, дело ${activity}`)
   // --- вход как MCP-клиент ---
   const reg = await (await fetch(`${BASE}/oauth/register`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ client_name: 'smoke', redirect_uris: [REDIRECT] }) })).json()
@@ -146,24 +150,58 @@ try {
     ['note_search', { query: 'базы знаний' }, 'REST v3'],
     ['note_get', { id: 3 }, 'REST v3'],
     ['note_get', { id: 999999 }, 'REST v3: нет такой статьи'],
+    // #22 поиск по телефону и почте
+    ['crm_find', { phone: ['+375291112233'], email: [`${RUN}@example.com`] }, '#22'],
+    ['crm_item_list', { entity: 'contact', filter: { '%lastName': RUN } }, '#21 имена'],
+    // #23 подзадачи
+    ['task_create', { title: `${RUN} Подзадача`, parentId: task }, '#23', null, r => made.tasks.push(r?.id ?? r?.taskId)],
+    ['task_list', { filter: { PARENT_ID: task } }, '#23 подзадачи'],
+    // #24 сообщения
+    ['im_chats', { limit: 5 }, '#24'],
+    ['im_message_send', { dialogId: '1', text: `${RUN}: проверка MCP` }, '#24'],
+    // #25 рабочее время
+    ['worktime_status', {}, '#25'],
+    // #26 диск
+    ['disk_storages', {}, '#26'],
+    ['disk_folder', { folderId: 3 }, '#26'],
+    ['disk_folder_add', { parentId: 3, name: `${RUN} папка` }, '#26', null, r => made.folders.push(r?.id)],
+    // #27 каталог
+    ['catalog_list', {}, '#27'],
+    ['catalog_products', { query: RUN }, '#27'],
+    ['catalog_product_get', { id: product }, '#27'],
+    ['catalog_product_update', { id: product, detailText: 'Подробное описание от MCP' }, '#27 было → стало'],
+    // #28 документы
+    ['crm_doc_templates', { entity: 'deal' }, '#28'],
+    ...(tpl ? [['crm_doc_create', { templateId: tpl, entity: 'deal', id: deal }, '#28', null, r => made.docs.push(r?.documentId)]] : []),
+    // #29 звонки
+    ['calls_stats', { from: '2026-09-01', to: '2026-10-17' }, '#29'],
     ['crm_item_get', { entity: 'deal', id: 999999999 }, 'нет такой сделки'],
     ['crm_item_get', { entity: 'deal', id: -1 }, 'неверный аргумент'],
     ['crm_item_get', { entity: 'deal', id: deal }, 'access истёк на портале', () => { expireNext = true }],
   ]
-  for (const [name, args, why, before] of cases) {
+  const verdict = []
+  for (const [name, args, why, before, after] of cases) {
     before?.()
     const from = portalCalls.length
     const r = await mcp('tools/call', { name, arguments: args })
     const res = r.body.result, text = res?.content?.[0]?.text ?? JSON.stringify(r.body.error)
     note(`\n## ${name} ${JSON.stringify(args)}${why ? ` — ${why}` : ''}`)
+    verdict.push(`${res?.isError ? '✗' : '✓'} ${name}${why ? ` (${why})` : ''}`)
+    if (!res?.isError) { try { after?.(JSON.parse(text)) } catch {} }
     note(`HTTP ${r.status}, ${r.ms} мс, isError=${!!res?.isError}, ответ ${text.length} символов`)
     for (const c of portalCalls.slice(from)) note(`  портал: ${c.kind === 'oauth' ? `oauth ${c.grant}` : `${c.method} [${c.contentType}] ${JSON.stringify(c.params)} → ${c.status}${c.ms != null ? ` за ${c.ms} мс` : ''}${c.note ? ` (${c.note})` : ''}`}`)
     note('```\n' + (text.length > 1200 ? text.slice(0, 1200) + '\n… (обрезано)' : text) + '\n```')
   }
+  note('\n## Итог\n' + verdict.join('\n'))
+  console.log(verdict.join('\n'))
   note('\n## Журнал сервера (audit)')
   for (const l of srvLog.split('\n').filter(l => l.includes('"audit"'))) note('    ' + l)
 } finally {
   app.kill(); proxy.close()
+  for (const d of made.docs.filter(Boolean)) await hook('crm.documentgenerator.document.delete', { id: d }).catch(e => note(`уборка документа: ${e.message}`))
+  for (const f of made.folders.filter(Boolean)) await hook('disk.folder.deletetree', { id: f }).catch(e => note(`уборка папки: ${e.message}`))
+  for (const t of made.tasks.filter(Boolean)) await hook('tasks.task.delete', { taskId: t }).catch(e => note(`уборка подзадачи: ${e.message}`))
+  if (product) await hook('catalog.product.delete', { id: product }).catch(e => note(`уборка товара: ${e.message}`))
   for (const [m, p] of [['crm.activity.delete', { id: activity }], ['tasks.task.delete', { taskId: task }], ['crm.deal.delete', { id: deal }], ['crm.lead.delete', { id: lead }], ['crm.contact.delete', { id: contact }], ['crm.company.delete', { id: company }]]) {
     if (p.id ?? p.taskId) await hook(m, p).catch(e => note(`уборка ${m}: ${e.message}`))
   }
