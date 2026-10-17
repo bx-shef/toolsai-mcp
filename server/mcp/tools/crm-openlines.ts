@@ -6,7 +6,7 @@ import { z } from 'zod'
 // отдаём — только тему, канал, время и ответственного.
 export default defineMcpTool({
   name: 'crm_openlines',
-  description: 'Обращения клиентов из открытых линий (чаты, мессенджеры, виджет сайта): тема, канал, клиент в CRM, ответственный (имя), когда начат и сколько минут открыт. Открытые — с самых давних; все — с новых. До 50.',
+  description: 'Обращения клиентов из открытых линий (чаты, мессенджеры, виджет сайта): тема, код канала, клиент в CRM, ответственный (имя), когда начат и сколько минут открыт. Открытые — с самых давних; все — с новых. До 50.',
   annotations: READ_ONLY,
   inputSchema: {
     onlyOpen: z.boolean().default(true).describe('Только незакрытые диалоги'),
@@ -32,7 +32,8 @@ export default defineMcpTool({
       return {
         id: Number(a.ID),
         title: a.SUBJECT || 'Обращение',
-        channel: a.PROVIDER_TYPE_ID || '',
+        // Код коннектора открытой линии (telegrambot, livechat…), не название канала; на портале с диалогами не сверено
+        connector: a.PROVIDER_TYPE_ID || '',
         open: a.COMPLETED !== 'Y',
         started: a.START_TIME,
         // Сколько диалог открыт (от начала), а не сколько клиент ждёт ответа: последней реплики в деле нет

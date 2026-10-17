@@ -18,7 +18,10 @@ export const USE_CASES: UseCase[] = [
   { title: 'Ответ по базе знаний', ask: '«Как у нас оформляют возврат? Ответь со ссылкой на статью»', tools: ['note_search', 'note_get'] },
   { title: 'Документ по шаблону', ask: '«Сделай акт по сделке 42»', tools: ['crm_doc_templates', 'crm_doc_create'] },
   { title: 'Описания товаров', ask: '«Допиши описания товарам без описания»', tools: ['catalog_products', 'catalog_product_update'] },
-  { title: 'Статистика звонков', ask: '«Сколько пропущенных входящих за вчера и у кого?»', tools: ['calls_stats'] },
+  { title: 'Статистика звонков', ask: '«Сколько пропущенных входящих за вчера и у кого? Кому перезвонить?»', tools: ['calls_stats', 'crm_find'] },
+  { title: 'Воронка и конверсия', ask: '«Покажи воронку продаж за октябрь: где теряем сделки?»', tools: ['crm_funnel'] },
+  { title: 'Записи на приём и обращения', ask: '«Кто записан на завтра? Какие обращения клиентов ждут ответа?»', tools: ['booking_list', 'crm_openlines'] },
+  { title: 'Дни рождения коллег', ask: '«У кого день рождения на этой неделе?»', tools: ['staff_birthdays'] },
   { title: 'Сообщение сотруднику или в чат', ask: '«Напиши в чат отдела продаж итоги дня»', tools: ['im_chats', 'im_message_send'] },
   { title: 'Рабочий день и файлы', ask: '«Начни мой день» · «Разложи файлы по папкам клиентов»', tools: ['worktime_action', 'disk_folder', 'disk_move'] },
 ]

@@ -137,10 +137,10 @@ cookie прошлого входа), проверяется `portalHost()`, до
 | `disk_storages`, `disk_folder` | `disk.storage.getlist`, `disk.folder.getchildren`; `DOWNLOAD_URL` не отдаётся — в нём токен доступа |
 | `catalog_list`, `catalog_products`, `catalog_product_get` | `catalog.catalog.list`, `catalog.product.list` (нужен `iblockId`), `catalog.product.get` + `catalog.price.list` + `catalog.storeproduct.list` |
 | `crm_doc_templates` | `crm.documentgenerator.template.list`, привязка `2_category_<воронка>` / `<тип>_<воронка>` / номер типа |
-| `calls_stats` | `voximplant.statistic.get` — звонки за период, сводка; `missedOnly` — только пропущенные (`!CALL_FAILED_CODE: 200`); запись разговора не отдаётся; на портале с телефонией не проверено |
+| `calls_stats` | `voximplant.statistic.get` — звонки за период, сводка; `missedOnly` — только пропущенные (`!CALL_FAILED_CODE: 200`, без `type` — входящие); запись разговора не отдаётся; на портале с телефонией не проверено |
 | `crm_funnel` | `crm.status.list` + один `batch` из `crm.item.list` по стадиям — число записей на стадии (`result_total`), для виджета `funnel` |
-| `staff_birthdays` | `user.get` (активные сотрудники, до 10 страниц) — дни рождения на N дней вперёд; скрытая дата приходит пустой — сотрудника нет в списке |
-| `booking_list` | `booking.v1.booking.list` (`within` в секундах unix) + `booking.v1.resource.list` — записи на приём; поля брони по документации, на портале без записей не проверено |
+| `staff_birthdays` | `user.get` (активные сотрудники, до 10 страниц) — дни рождения до 31 дня вперёд, только день и месяц; «сегодня» — по поясу портала; скрытая дата приходит пустой — сотрудника нет в списке |
+| `booking_list` | `booking.v1.booking.list` (`within` в секундах unix) + `booking.v1.resource.list` — записи на приём; время — в поясе брони; описание (свободный текст) — только с `withNote`; поля брони по документации, на портале без записей не проверено |
 | `crm_openlines` | `crm.activity.list` с `PROVIDER_ID = IMOPENLINES_SESSION` — обращения открытых линий (группа CRM: это дела CRM); текст переписки не отдаётся, ответственный — с именем |
 | `im_chats` | `im.recent.list` — недавние диалоги, `dialogId` для отправки |
 | `crm_find` | `crm.duplicate.findbycomm` по телефону/почте + `crm.item.list` для названий; телефон — в международном виде |

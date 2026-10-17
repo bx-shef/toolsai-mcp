@@ -7,10 +7,10 @@ import { daysToBirthday, monthDay } from '../../lib/people'
 // нужна область user (в user_brief её может не быть — сверить на портале, docs/OAUTH_CHECK.md).
 export default defineMcpTool({
   name: 'staff_birthdays',
-  description: 'Дни рождения сотрудников на ближайшие дни (и прошедшие за back дней): ID, имя, должность, дата, через сколько дней. Для поздравления (виджет birthday) — userId отсюда.',
+  description: 'Дни рождения сотрудников на ближайшие дни (и прошедшие за back дней): ID, имя, должность, день и месяц, через сколько дней.',
   annotations: READ_ONLY,
   inputSchema: {
-    days: z.coerce.number().int().min(0).max(60).default(7).describe('Сколько дней вперёд, 0 — только сегодня'),
+    days: z.coerce.number().int().min(0).max(31).default(7).describe('Сколько дней вперёд, 0 — только сегодня'),
     back: z.coerce.number().int().min(0).max(7).default(0).describe('Сколько прошедших дней тоже показать'),
     timezoneOffsetMin: z.coerce.number().int().min(-720).max(840).default(180).describe('Смещение часового пояса портала в минутах (Минск, Москва — 180): «сегодня» — по порталу'),
   },
