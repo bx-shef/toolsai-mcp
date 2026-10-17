@@ -110,7 +110,7 @@ export function annotationsFor(kind: ToolKind) {
 }
 
 /** Имена встроенных инструментов (server/mcp/tools): модуль их не перекрывает. Сверку держит tests/repo.test.ts. */
-export const BUILTIN_TOOLS = new Set(['user_current', 'crm_activity_list', 'crm_item_get', 'crm_item_list', 'crm_fields', 'crm_stages', 'task_get', 'task_list',
+export const BUILTIN_TOOLS = new Set(['user_current', 'crm_activity_list', 'crm_item_get', 'crm_item_list', 'crm_fields', 'crm_stages', 'crm_find', 'task_get', 'task_list',
   'calendar_events', 'calendar_busy', 'task_checklist', 'task_elapsed', 'task_results', 'task_comments',
   'note_bases', 'note_tree', 'note_search', 'note_get'])
 

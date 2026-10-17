@@ -565,6 +565,12 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(bad.data).toContain('id, bogus')
     expect(updates()).toBe(n)
     expect((await call('crm_item_add', { entity: 'contact', fields: { title: 'Новый' } })).data).toEqual({ entityTypeId: 3, id: 77, title: 'Новый' })
+    // поиск по телефону: найденные с названиями, недоступная сотруднику — только id
+    expect((await call('crm_find', { phone: ['+375297778899'] })).data).toEqual({ found: [
+      { entity: 'contact', id: 46, title: 'К46', assignedById: 1 }, { entity: 'contact', id: 48, title: 'К48', assignedById: 1 }, { entity: 'company', id: 9, hidden: true },
+    ], duplicates: true })
+    expect((await call('crm_find', { email: ['nobody@example.com'] })).data).toEqual({ found: [], duplicates: false })
+    expect((await call('crm_find', {})).err).toBe(true)
     // значения полей в журнал не попадают
     expect(logs).not.toContain('Директор')
     fake.state.user = 7
