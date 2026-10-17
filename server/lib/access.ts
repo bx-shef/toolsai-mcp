@@ -15,6 +15,7 @@ export const TOOL_GROUPS = {
   tasks: 'Задачи: чтение, комментарии, чек-листы, время',
   calendar: 'Календарь: события, занятость, встречи',
   kb: 'База знаний',
+  messages: 'Сообщения: список чатов, написать сотруднику или в чат',
   modules: 'Инструменты модулей портала',
 } as const
 export type ToolGroup = keyof typeof TOOL_GROUPS
@@ -25,6 +26,7 @@ export function toolGroup(name: string): ToolGroup | null {
   if (name.startsWith('task_')) return 'tasks'
   if (name.startsWith('calendar_')) return 'calendar'
   if (name.startsWith('note_')) return 'kb'
+  if (name.startsWith('im_')) return 'messages'
   return null
 }
 
