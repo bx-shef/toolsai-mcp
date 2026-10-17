@@ -490,6 +490,9 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     }
     expect(await call('task_create', { title: 'Отчёт', crm: ['D_12'] })).toMatchObject({ id: 30, responsibleId: 1, status: 'ждёт выполнения' })
     expect(fake.calls.filter((c: any) => c.path.startsWith('/rest/tasks.task.add')).at(-1).body.fields).toMatchObject({ TITLE: 'Отчёт', RESPONSIBLE_ID: '1', UF_CRM_TASK: ['D_12'] })
+    // подзадача: PARENT_ID уходит в портал, parentId — в ответе (замер 2026-10-17)
+    expect(await call('task_create', { title: 'Шаг 1', parentId: 12 })).toMatchObject({ id: 30, parentId: 12 })
+    expect(fake.calls.filter((c: any) => c.path.startsWith('/rest/tasks.task.add')).at(-1).body.fields.PARENT_ID).toBe(12)
     expect(await call('task_update', { taskId: 30, title: 'Стало' })).toEqual({ taskId: 30, changes: { title: { было: 'Было', стало: 'Стало' } } })
     expect(await call('task_status', { taskId: 30, action: 'start' })).toEqual({ taskId: 30, status: { было: 'ждёт выполнения', стало: 'выполняется' } })
     expect(await call('task_time_add', { taskId: 30, minutes: 30, comment: 'сделано' })).toEqual({ taskId: 30, recordId: 5, minutes: 30 })
