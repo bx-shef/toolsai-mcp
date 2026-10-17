@@ -37,6 +37,7 @@
 | #34 | Сообщения ([#24](https://github.com/bx-shef/toolsai-mcp/issues/24)): `im_chats`, `im_message_send` (с правом записи), новая группа «Сообщения» на `/admin` |
 | #35 | Рабочее время ([#25](https://github.com/bx-shef/toolsai-mcp/issues/25)): `worktime_status`, `worktime_action` — свой день без права записи, группа на `/admin` |
 | #36 | Диск ([#26](https://github.com/bx-shef/toolsai-mcp/issues/26)): хранилища, папки, создать папку, переместить; ссылка на скачивание с токеном модели не отдаётся |
+| #37 | Каталог ([#27](https://github.com/bx-shef/toolsai-mcp/issues/27)): каталоги, поиск товаров, цены и остатки, изменение описания |
 | #6 | Инструменты своих модулей: манифест (`MODULE_MANIFESTS`), только методы своего вендора, только ключи из схемы, запись и удаление — `WRITE_USERS` — [`MODULE_TOOLS.md`](MODULE_TOOLS.md) |
 
 ## Не готово

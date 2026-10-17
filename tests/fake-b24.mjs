@@ -7,7 +7,7 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
   let n = 0
   const tokens = new Map() // access -> userId
   const refresh = new Map() // refresh -> userId
-  const state = { user: 7, expireNext: false, revoked: false, manifestFail: false, admins: new Set([1]), deal: { stageId: 'NEW', post: null }, note: { id: 3, collectionId: 1, title: 'Отпуск', markdown: '# Отпуск\nТекст', isArchived: false }, task: { id: '30', title: 'Было', status: '2', deadline: null, responsibleId: '1' } }
+  const state = { user: 7, expireNext: false, revoked: false, manifestFail: false, admins: new Set([1]), deal: { stageId: 'NEW', post: null }, product: { detailText: 'старое' }, note: { id: 3, collectionId: 1, title: 'Отпуск', markdown: '# Отпуск\nТекст', isArchived: false }, task: { id: '30', title: 'Было', status: '2', deadline: null, responsibleId: '1' } }
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x')
     let body = ''
@@ -103,6 +103,12 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
       if (method === 'disk.folder.addsubfolder') return json(200, { result: { ID: '70', NAME: p.data.NAME, PARENT_ID: String(p.id) } })
       if (method === 'disk.file.get') return json(200, { result: { ID: String(p.id), NAME: 'a.txt', PARENT_ID: '1' } })
       if (method === 'disk.file.moveto') return json(200, { result: { ID: String(p.id), NAME: 'a.txt', PARENT_ID: String(p.targetFolderId) } })
+      if (method === 'catalog.catalog.list') return json(200, { result: { catalogs: [{ iblockId: 24, name: 'Каталог CRM', productIblockId: null }] } })
+      if (method === 'catalog.product.list') return p.filter?.iblockId ? json(200, { result: { products: [{ id: 4, iblockId: 24, name: 'Окно', active: 'Y', quantity: 3 }] }, total: 1 }) : json(400, { error: '0', error_description: 'Required filter fields: iblockId' })
+      if (method === 'catalog.product.get') return json(200, { result: { product: { id: 4, iblockId: 24, name: 'Окно', active: 'Y', quantity: 3, ...state.product } } })
+      if (method === 'catalog.price.list') return json(200, { result: { prices: [{ catalogGroupId: 1, price: 100, currency: 'BYN' }] } })
+      if (method === 'catalog.storeproduct.list') return json(200, { result: { storeProducts: [{ storeId: 1, amount: 3, quantityReserved: 1 }] } })
+      if (method === 'catalog.product.update') { Object.assign(state.product, p.fields); return json(200, { result: { element: { id: p.id, ...state.product } } }) }
       if (method === 'im.recent.list') return json(200, { result: { items: [{ id: 8, type: 'user', title: 'Пётр' }, { id: 'chat2', type: 'chat', title: 'Общий чат' }] } })
       if (method === 'im.message.add') return String(p.DIALOG_ID) === 'chat999' ? json(400, { error: 'CHAT_ID', error_description: 'Ошибка при создании сообщения' }) : json(200, { result: 136 })
       if (method === 'crm.duplicate.findbycomm') return json(200, { result: p.type === 'PHONE' ? { CONTACT: [46, 48], COMPANY: [9] } : [] })

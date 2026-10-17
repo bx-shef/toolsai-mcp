@@ -414,7 +414,7 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     // чужая форма без csrf — отказ; мусор вместо кодов — отказ, ничего не сохранено
     expect((await save({ csrf: 'x', use: 'U7' })).status).toBe(403)
     expect((await save({ csrf, use: 'ivanov' })).status).toBe(400)
-    const all = { group_crm: '1', group_tasks: '1', group_calendar: '1', group_kb: '1', group_messages: '1', group_worktime: '1', group_disk: '1', group_modules: '1' }
+    const all = { group_crm: '1', group_tasks: '1', group_calendar: '1', group_kb: '1', group_messages: '1', group_worktime: '1', group_disk: '1', group_catalog: '1', group_modules: '1' }
     const saved = await save({ csrf, use: 'U7', write: '', manifests: 'shef.mcp.tools', ...all })
     expect(saved.status).toBe(200)
     expect(await saved.text()).toContain('Сохранено')
@@ -592,6 +592,11 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(JSON.stringify(folder.data)).not.toContain('SECRET')
     expect((await call('disk_folder_add', { parentId: 1, name: 'Счета' })).data).toEqual({ id: 70, name: 'Счета', parentId: 1 })
     expect((await call('disk_move', { id: 72, type: 'file', targetFolderId: 70 })).data).toEqual({ id: 72, name: 'a.txt', folder: { было: 1, стало: 70 } })
+    // каталог: поиск в первом каталоге (iblockId обязателен у портала), карточка с ценами и остатками, описание
+    expect((await call('catalog_products', { query: 'Окно' })).data).toEqual({ items: [{ id: 4, iblockId: 24, name: 'Окно', active: 'Y', quantity: 3 }], next: null, total: 1 })
+    expect(fake.calls.filter((c: any) => c.path.startsWith('/rest/catalog.product.list')).at(-1).body.filter).toEqual({ iblockId: 24, '%name': 'Окно' })
+    expect((await call('catalog_product_get', { id: 4 })).data).toMatchObject({ prices: [{ priceTypeId: 1, price: 100, currency: 'BYN' }], stores: [{ storeId: 1, amount: 3, reserved: 1 }] })
+    expect((await call('catalog_product_update', { id: 4, detailText: 'Новое' })).data).toEqual({ id: 4, changes: { detailText: { было: 'старое', стало: 'Новое' } } })
     // значения полей в журнал не попадают
     expect(logs).not.toContain('Директор')
     fake.state.user = 7
