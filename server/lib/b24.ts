@@ -256,8 +256,11 @@ export async function assertPublicHost(host: string, resolve: Resolve = dnsResol
  * по v2 «Method not found», по v3 — работает.
  */
 export function isV3(method: string): boolean {
-  return method.startsWith('note.')
+  return method.startsWith('note.') || V3_METHODS.has(method)
 }
+
+/** Методы задач, которые есть только в REST v3 (по .bitrix-docs/b24-rest-docs, «Метод относится к REST 3.0»; проверено 2026-10-17). */
+const V3_METHODS = new Set(['tasks.task.chat.message.send', 'tasks.task.result.add', 'tasks.task.result.addfromchatmessage'])
 
 function restError(code: string, description: string, status = 0): B24Error {
   // v3: «записи нет» — своим кодом исключения (замер 2026-10-16)

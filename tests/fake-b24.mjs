@@ -69,6 +69,13 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
       if (method === 'task.commentitem.add') return json(200, { result: 88 })
       if (method === 'task.elapseditem.add') return json(200, { result: Number(p.ARFIELDS.SECONDS) === 1800 ? 5 : 0 })
       // База знаний — только REST v3 (/rest/api/), ошибки объектом {code, message} (замер 2026-10-16)
+      // Задачи в REST v3 (замер 2026-10-17); state.oldBox — коробка без этих методов
+      if (method === 'tasks.task.chat.message.send' || method === 'tasks.task.result.add') {
+        if (!v3) return json(400, { error: 'ERROR_METHOD_NOT_FOUND', error_description: 'Method not found!' })
+        if (state.oldBox) return json(400, { error: { code: 'BITRIX_REST_V3_EXCEPTION_METHODNOTFOUNDEXCEPTION', message: 'Метод не найден' } })
+        if (method === 'tasks.task.chat.message.send') return json(200, { result: { result: true } })
+        return json(200, { result: { item: { id: 2, taskId: p.fields.taskId, text: p.fields.text, createdAt: 'd' } } })
+      }
       if (method.startsWith('note.') && !v3) return json(400, { error: 'ERROR_METHOD_NOT_FOUND', error_description: 'Method not found!' })
       if (method === 'note.collection.list') return json(200, { result: { items: [{ id: 1, name: 'Моя компания', policyLevel: 'portal', position: 1000 }], nextCursor: null } })
       if (method === 'note.document.tree.list') return json(200, { result: { items: [{ id: 3, collectionId: 1, parentId: null, title: 'Отпуск', position: 1, children: [{ id: 4, title: 'Заявление', children: [] }] }] } })

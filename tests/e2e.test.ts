@@ -473,7 +473,13 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(await call('task_time_add', { taskId: 30, minutes: 30, comment: 'сделано' })).toEqual({ taskId: 30, recordId: 5, minutes: 30 })
     expect(await call('task_checklist_done', { taskId: 30, itemId: 4, done: false })).toMatchObject({ done: false })
     expect(fake.calls.at(-1).path).toMatch(/task\.checklistitem\.renew/)
-    expect((await call('task_comment_add', { taskId: 30, text: 'итог' })).commentId).toBe(88)
+    // комментарий — в чат задачи по REST v3; на старой коробке — прежним способом
+    expect(await call('task_comment_add', { taskId: 30, text: 'итог' })).toEqual({ taskId: 30, sent: true, via: 'chat' })
+    expect(fake.calls.at(-1)).toMatchObject({ path: '/rest/api/tasks.task.chat.message.send', body: { fields: { taskId: 30, text: 'итог' } } })
+    fake.state.oldBox = true
+    expect(await call('task_comment_add', { taskId: 30, text: 'итог' })).toEqual({ taskId: 30, sent: true, via: 'forum', commentId: 88 })
+    fake.state.oldBox = false
+    expect(await call('task_result_add', { taskId: 30, text: 'сделано' })).toEqual({ taskId: 30, resultId: 2, createdAt: 'd' })
     // встреча: владелец — сам сотрудник, он же среди участников
     expect(await call('calendar_event_add', { name: 'Созвон', from: '2026-10-20T10:00:00', to: '2026-10-20T11:00:00', attendees: [7] })).toEqual({ eventId: 9 })
     expect(fake.calls.at(-1).body).toMatchObject({ type: 'user', ownerId: 1, attendees: [1, 7], host: 1, timezone_from: 'Europe/Minsk' })

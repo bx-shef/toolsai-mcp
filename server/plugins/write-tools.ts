@@ -102,9 +102,32 @@ const defs: Record<(typeof WRITE_TOOLS)[number], Def> = {
   },
   task_comment_add: {
     title: 'Написать комментарий в задачу',
-    description: 'Комментарий к задаче от имени сотрудника (у новых задач — сообщение в чат задачи). Например, отчёт о результате работы.',
+    description: 'Сообщение в чат задачи от имени сотрудника — обсуждение, вопрос, промежуточный отчёт. Итог работы — task_result_add.',
     input: { taskId: id, text: z.string().min(1).max(20000) },
-    handler: async (a) => ({ commentId: (await b24Call('task_comment_add', 'task.commentitem.add', { TASKID: a.taskId, FIELDS: { POST_MESSAGE: a.text } }, a)).result }),
+    handler: async (a) => {
+      // tasks.task.chat.message.send — замена task.commentitem.add (DEPRECATED с tasks 25.700.0), только REST v3:
+      // .bitrix-docs/b24-rest-docs/api-reference/tasks/tasks-task-chat-message-send.md, проверено 2026-10-17.
+      // Коробка старее — метода нет: старый способ (комментарий форума).
+      try {
+        await b24Call('task_comment_add', 'tasks.task.chat.message.send', { fields: { taskId: a.taskId, text: a.text } }, a)
+        return { taskId: a.taskId, sent: true, via: 'chat' }
+      }
+      catch (e) {
+        if (!/METHODNOTFOUND|ERROR_METHOD_NOT_FOUND/i.test(String((e as { message?: string }).message))) throw e
+        const res = await b24Call('task_comment_add', 'task.commentitem.add', { TASKID: a.taskId, FIELDS: { POST_MESSAGE: a.text } }, a)
+        return { taskId: a.taskId, sent: true, via: 'forum', commentId: res.result }
+      }
+    },
+  },
+  task_result_add: {
+    title: 'Записать результат задачи',
+    description: 'Итог работы по задаче — отметка «Результат» (видна в задаче отдельно от обсуждения). Текст — что сделано.',
+    input: { taskId: id, text: z.string().min(1).max(20000) },
+    handler: async (a) => {
+      // REST v3: .bitrix-docs/b24-rest-docs/api-reference/tasks/result/tasks-task-result-add.md, проверено 2026-10-17
+      const item = (await b24Call('task_result_add', 'tasks.task.result.add', { fields: { taskId: a.taskId, text: a.text } }, a)).result?.item ?? {}
+      return { taskId: a.taskId, resultId: item.id, createdAt: item.createdAt }
+    },
   },
   calendar_event_add: {
     title: 'Создать встречу в календаре',
