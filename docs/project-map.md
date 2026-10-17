@@ -40,6 +40,7 @@
 | #37 | Каталог ([#27](https://github.com/bx-shef/toolsai-mcp/issues/27)): каталоги, поиск товаров, цены и остатки, изменение описания |
 | #38 | Документы по шаблону ([#28](https://github.com/bx-shef/toolsai-mcp/issues/28)): шаблоны для сущности и воронки, документ со ссылками DOCX и PDF |
 | #39 | Статистика звонков ([#29](https://github.com/bx-shef/toolsai-mcp/issues/29)): `calls_stats` — по документации, на портале с телефонией не проверено |
+| #40 | `/connect` ([#30](https://github.com/bx-shef/toolsai-mcp/issues/30)): адрес и шаги для Claude, Claude Code, Codex, Cursor (+ плагин bitrix-tools/best-practice), Коворк/Код, Hermes; встраивается в слайдер портала |
 | #6 | Инструменты своих модулей: манифест (`MODULE_MANIFESTS`), только методы своего вендора, только ключи из схемы, запись и удаление — `WRITE_USERS` — [`MODULE_TOOLS.md`](MODULE_TOOLS.md) |
 
 ## Не готово
