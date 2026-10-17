@@ -180,7 +180,7 @@ try {
     ['crm_funnel', { entity: 'deal' }, 'виджеты: воронка'],
     ['staff_birthdays', { days: 30 }, 'виджеты: дни рождения'],
     ['booking_list', { from: '2026-10-17', to: '2026-10-24' }, 'виджеты: записи'],
-    ['openlines_dialogs', {}, 'виджеты: обращения'],
+    ['crm_openlines', {}, 'виджеты: обращения'],
     ['crm_item_get', { entity: 'deal', id: 999999999 }, 'нет такой сделки'],
     ['crm_item_get', { entity: 'deal', id: -1 }, 'неверный аргумент'],
     ['crm_item_get', { entity: 'deal', id: deal }, 'access истёк на портале', () => { expireNext = true }],

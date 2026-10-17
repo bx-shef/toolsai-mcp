@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { localTime } from '../../lib/people'
 
 // Онлайн-запись (модуль booking): booking.v1.booking.list и booking.v1.resource.list —
 // .bitrix-docs/b24-rest-docs/api-reference/booking/booking/booking-v1-booking-list.md,
@@ -18,7 +19,7 @@ export default defineMcpTool({
   annotations: READ_ONLY,
   inputSchema: {
     from: day, to: day.optional().describe('По какой день включительно; нет — только from'),
-    timezoneOffsetMin: z.coerce.number().int().min(-720).max(840).default(180).describe('Смещение часового пояса портала в минутах (Минск, Москва — 180)'),
+    timezoneOffsetMin: z.coerce.number().int().min(-720).max(840).default(180).describe('Смещение часового пояса портала в минутах (Минск, Москва — 180) — границы дня; время брони — в её собственном поясе'),
     resourceId: z.coerce.number().int().positive().optional(),
     start: z.coerce.number().int().min(0).default(0),
   },
@@ -29,16 +30,21 @@ export default defineMcpTool({
     const res = await b24Call('booking_list', 'booking.v1.booking.list', { filter, order: { id: 'ASC' }, start: args.start }, args)
     const list = res.result?.booking ?? []
     const resources = new Map<number, string>()
-    if (list.length) {
-      for (const r of (await b24Call('booking_list', 'booking.v1.resource.list', {}, args)).result?.resource ?? []) resources.set(Number(r.id), String(r.name ?? ''))
+    const wanted = new Set<number>(list.flatMap((b: any) => (Array.isArray(b.resourceIds) ? b.resourceIds : []).map(Number)))
+    // Ресурсы страницами по 50, пока не нашлись все нужные (не больше 5 страниц)
+    for (let page = 0, start = 0; wanted.size && page < 5; page++) {
+      const res = await b24Call('booking_list', 'booking.v1.resource.list', { start }, args)
+      for (const r of res.result?.resource ?? []) { resources.set(Number(r.id), String(r.name ?? '')); wanted.delete(Number(r.id)) }
+      if (res.next == null) break
+      start = Number(res.next)
     }
     const items = list.map((b: any) => {
       const from = stamp(b.datePeriod?.from), to = stamp(b.datePeriod?.to)
       return {
         id: Number(b.id),
         name: b.name || '',
-        ...(from ? { from: new Date((from + args.timezoneOffsetMin * 60) * 1000).toISOString().slice(0, 16).replace('T', ' ') } : {}),
-        ...(to ? { to: new Date((to + args.timezoneOffsetMin * 60) * 1000).toISOString().slice(0, 16).replace('T', ' ') } : {}),
+        ...(from ? { from: localTime(from, b.datePeriod?.from?.timezone, args.timezoneOffsetMin) } : {}),
+        ...(to ? { to: localTime(to, b.datePeriod?.to?.timezone, args.timezoneOffsetMin) } : {}),
         resources: (Array.isArray(b.resourceIds) ? b.resourceIds : []).map((id: unknown) => resources.get(Number(id)) || `#${id}`),
         ...(typeof b.isConfirmed === 'boolean' ? { confirmed: b.isConfirmed } : {}),
         ...(typeof b.visitStatus === 'string' ? { visit: b.visitStatus } : {}),

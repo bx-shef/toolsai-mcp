@@ -5,8 +5,8 @@ import { z } from 'zod'
 // activity-base/crm-activity-list.md). Незавершённое дело — диалог ещё не закрыт. Текст переписки не
 // отдаём — только тему, канал, время и ответственного.
 export default defineMcpTool({
-  name: 'openlines_dialogs',
-  description: 'Обращения клиентов из открытых линий (чаты, мессенджеры, виджет сайта): открытые сначала, тема, клиент в CRM, ответственный, когда начато и сколько ждёт. До 50.',
+  name: 'crm_openlines',
+  description: 'Обращения клиентов из открытых линий (чаты, мессенджеры, виджет сайта): тема, канал, клиент в CRM, ответственный (имя), когда начат и сколько минут открыт. Открытые — с самых давних; все — с новых. До 50.',
   annotations: READ_ONLY,
   inputSchema: {
     onlyOpen: z.boolean().default(true).describe('Только незакрытые диалоги'),
@@ -17,14 +17,17 @@ export default defineMcpTool({
     const filter: Record<string, unknown> = { PROVIDER_ID: 'IMOPENLINES_SESSION' }
     if (args.onlyOpen) filter.COMPLETED = 'N'
     if (args.responsibleId) filter.RESPONSIBLE_ID = args.responsibleId
-    const res = await b24Call('openlines_dialogs', 'crm.activity.list', {
+    const res = await b24Call('crm_openlines', 'crm.activity.list', {
       filter,
-      order: { START_TIME: 'ASC' },
+      // Открытые — с самых давних (кто дольше ждёт), все — с новых: иначе первая страница — история за годы
+      order: { START_TIME: args.onlyOpen ? 'ASC' : 'DESC' },
       select: ['ID', 'SUBJECT', 'START_TIME', 'LAST_UPDATED', 'COMPLETED', 'RESPONSIBLE_ID', 'OWNER_TYPE_ID', 'OWNER_ID', 'PROVIDER_TYPE_ID'],
       start: args.start,
     }, args)
     const now = Date.now()
-    const items = (Array.isArray(res.result) ? res.result : []).map((a: any) => {
+    const rows = Array.isArray(res.result) ? res.result : []
+    const names = await userNames('crm_openlines', rows.map((a: any) => a.RESPONSIBLE_ID))
+    const items = rows.map((a: any) => {
       const started = Date.parse(a.START_TIME)
       return {
         id: Number(a.ID),
@@ -32,8 +35,10 @@ export default defineMcpTool({
         channel: a.PROVIDER_TYPE_ID || '',
         open: a.COMPLETED !== 'Y',
         started: a.START_TIME,
-        ...(Number.isFinite(started) && a.COMPLETED !== 'Y' ? { waitingMin: Math.max(0, Math.round((now - started) / 60000)) } : {}),
+        // Сколько диалог открыт (от начала), а не сколько клиент ждёт ответа: последней реплики в деле нет
+        ...(Number.isFinite(started) && a.COMPLETED !== 'Y' ? { openMin: Math.max(0, Math.round((now - started) / 60000)) } : {}),
         responsibleId: Number(a.RESPONSIBLE_ID),
+        ...(names[String(a.RESPONSIBLE_ID)] ? { responsible: names[String(a.RESPONSIBLE_ID)] } : {}),
         ...(Number(a.OWNER_ID) ? { crm: { entityTypeId: Number(a.OWNER_TYPE_ID), id: Number(a.OWNER_ID) } } : {}),
       }
     })

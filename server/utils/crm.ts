@@ -32,4 +32,9 @@ export function stageEntityId(etid: number, categoryId: number): string | null {
   return `DYNAMIC_${etid}_STAGE_${categoryId}`
 }
 
+/** Стадия из crm.status.list: ID, название, смысл (process / success / failure) — общая для crm_stages и crm_funnel. */
+export function stageOf(s: any): { id: string, name: string, semantics: string } {
+  return { id: String(s.STATUS_ID), name: s.NAME, semantics: s.EXTRA?.SEMANTICS ?? (s.SEMANTICS === 'S' ? 'success' : s.SEMANTICS === 'F' ? 'failure' : 'process') }
+}
+
 export const crmFilter = z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.array(z.union([z.string(), z.number()]))]))

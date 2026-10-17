@@ -124,8 +124,13 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
       if (method === 'batch') {
         // Подставной batch: счёт по стадии из запроса команды; другие методы в batch не нужны
         const total = {}
-        for (const [k, q] of Object.entries(p.cmd ?? {})) total[k] = ({ NEW: 10, WORK: 4, WON: 2, LOSE: 3 })[new URLSearchParams(String(q).split('?')[1]).get('filter[stageId]')] ?? 0
-        return json(200, { result: { result: {}, result_error: [], result_total: total, result_next: [] } })
+        const error = {}
+        for (const [k, q] of Object.entries(p.cmd ?? {})) {
+          const stage = new URLSearchParams(String(q).split('?')[1]).get('filter[stageId]')
+          if (state.funnelFail && stage === 'WORK') error[k] = { error: 'QUERY_LIMIT_EXCEEDED' }
+          else total[k] = ({ NEW: 10, WORK: 4, WON: 2, LOSE: 3 })[stage] ?? 0
+        }
+        return json(200, { result: { result: {}, result_error: Object.keys(error).length ? error : [], result_total: total, result_next: [] } })
       }
       if (method === 'crm.status.list' && p.filter?.ENTITY_ID === 'STATUS') return json(200, { result: [
         { STATUS_ID: 'NEW', NAME: 'Новая', EXTRA: { SEMANTICS: 'process' } }, { STATUS_ID: 'WORK', NAME: 'В работе', EXTRA: { SEMANTICS: 'process' } },
@@ -136,7 +141,7 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
         { ID: '4', NAME: 'Пётр', LAST_NAME: 'Иванов', WORK_POSITION: '', PERSONAL_BIRTHDAY: '' },
       ], next: 1, total: 3 })
       if (method === 'booking.v1.booking.list') return json(200, { result: { booking: [
-        { id: 31, name: 'Замер', resourceIds: [5], datePeriod: { from: { timestamp: 1792227600, timezone: 'Europe/Minsk' }, to: { timestamp: 1792231200, timezone: 'Europe/Minsk' } }, isConfirmed: false, description: 'Просили утро' },
+        { id: 31, name: 'Замер', resourceIds: [5], datePeriod: { from: { timestamp: 1792227600, timezone: 'Europe/Berlin' }, to: { timestamp: 1792231200, timezone: 'Europe/Berlin' } }, isConfirmed: false, description: 'Просили утро' },
       ] }, total: 0 })
       if (method === 'booking.v1.resource.list') return json(200, { result: { resource: [{ id: 5, name: 'Кабинет 2' }] }, total: 0 })
       if (method === 'crm.activity.list' && p.filter?.PROVIDER_ID === 'IMOPENLINES_SESSION') return json(200, { result: [
@@ -150,6 +155,7 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
       if (method === 'crm.item.fields') return json(200, { result: { fields: { id: { title: 'ID', type: 'integer', isReadOnly: true }, title: { title: 'Название', type: 'string' }, stageId: { title: 'Стадия', type: 'crm_status', statusType: 'DEAL_STAGE' }, post: { title: 'Должность', type: 'string' }, ufCrmList: { title: 'Список', type: 'enumeration', items: [{ ID: 1, VALUE: 'А' }] } } } })
       if (method === 'crm.item.update') { Object.assign(state.deal, p.fields); return json(200, { result: { item: { id: p.id, ...state.deal } } }) }
       if (method === 'crm.item.add') return json(200, { result: { item: { id: 77, ...p.fields } } })
+      if (method === 'crm.category.list' && Number(p.entityTypeId) === 1036) return json(200, { result: { categories: [{ id: 5, name: 'Старая', isDefault: 'N' }, { id: 7, name: 'Основная', isDefault: 'Y' }] } })
       if (method === 'crm.category.list') return json(200, { result: { categories: [{ id: 0, name: 'Общая' }, { id: 3, name: 'Опт' }] } })
       if (method === 'crm.status.list') return json(200, { result: [{ STATUS_ID: p.filter.ENTITY_ID === 'DEAL_STAGE' ? 'NEW' : 'C3:NEW', NAME: 'Новая', EXTRA: { SEMANTICS: 'process' } }] })
       if (method === 'tasks.task.get') return json(200, { result: Number(p.taskId) === 404 ? [] : { task: { id: String(p.taskId), ...(p.select ? { chatId: Number(p.taskId) === 5 ? null : 28 } : {}) } } })

@@ -443,7 +443,7 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     // чужая форма без csrf — отказ; мусор вместо кодов — отказ, ничего не сохранено
     expect((await save({ csrf: 'x', use: 'U7' })).status).toBe(403)
     expect((await save({ csrf, use: 'ivanov' })).status).toBe(400)
-    const all = { group_crm: '1', group_tasks: '1', group_calendar: '1', group_kb: '1', group_messages: '1', group_worktime: '1', group_disk: '1', group_catalog: '1', group_calls: '1', group_booking: '1', group_openlines: '1', group_staff: '1', group_modules: '1' }
+    const all = { group_crm: '1', group_tasks: '1', group_calendar: '1', group_kb: '1', group_messages: '1', group_worktime: '1', group_disk: '1', group_catalog: '1', group_calls: '1', group_booking: '1', group_staff: '1', group_modules: '1' }
     const saved = await save({ csrf, use: 'U7', write: '', manifests: 'shef.mcp.tools', ...all })
     expect(saved.status).toBe(200)
     expect(await saved.text()).toContain('Сохранено')
@@ -652,10 +652,22 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     expect(birthdays.items).toEqual([{ userId: 3, name: 'Анна Сидорова', position: 'Бухгалтер', date: expect.stringMatching(/^\d{2}\.\d{2}$/), inDays: 2 }])
     expect(fake.calls.filter((c: any) => c.path.startsWith('/rest/user.get')).length).toBeGreaterThanOrEqual(2)
     const booking = (await call('booking_list', { from: '2026-10-17' })).data
-    expect(booking.items).toEqual([{ id: 31, name: 'Замер', from: '2026-10-17 12:00', to: '2026-10-17 13:00', resources: ['Кабинет 2'], confirmed: false, note: 'Просили утро' }])
+    expect(booking.items).toEqual([{ id: 31, name: 'Замер', from: '2026-10-17 11:00', to: '2026-10-17 12:00', resources: ['Кабинет 2'], confirmed: false, note: 'Просили утро' }])
+    // время — в поясе самой брони (Берлин, летнее UTC+2), границы дня — по смещению портала
     expect(fake.calls.filter((c: any) => c.path.startsWith('/rest/booking.v1.booking.list')).at(-1).body.filter.within).toEqual({ dateFrom: 1792184400, dateTo: 1792270800 })
-    const dialogs = (await call('openlines_dialogs', {})).data
-    expect(dialogs.items[0]).toMatchObject({ id: 81, title: 'Не приходит счёт', channel: 'telegrambot', open: true, responsibleId: 7, crm: { entityTypeId: 1, id: 4 } })
+    const dialogs = (await call('crm_openlines', {})).data
+    expect(dialogs.items[0]).toMatchObject({ id: 81, title: 'Не приходит счёт', channel: 'telegrambot', open: true, responsibleId: 7, responsible: 'Имя7 Фамилия', crm: { entityTypeId: 1, id: 4 } })
+    expect(fake.calls.filter((c: any) => c.path.startsWith('/rest/crm.activity.list')).at(-1).body.order).toEqual({ START_TIME: 'ASC' })
+    await call('crm_openlines', { onlyOpen: false })
+    expect(fake.calls.filter((c: any) => c.path.startsWith('/rest/crm.activity.list')).at(-1).body.order).toEqual({ START_TIME: 'DESC' })
+    // упавшая команда batch — отказ, а не «0 на стадии»
+    fake.state.funnelFail = true
+    const failed = await call('crm_funnel', { entity: 'lead' })
+    expect([failed.err, failed.data]).toEqual([true, expect.stringMatching(/не посчитал стадии \(1 из 4\)/)])
+    fake.state.funnelFail = false
+    // смарт-процесс без воронки — основная (isDefault), а не несуществующая «0»
+    expect((await call('crm_funnel', { entity: 1036 })).data.categoryId).toBe(7)
+    expect(fake.calls.filter((c: any) => c.path.startsWith('/rest/crm.status.list')).at(-1).body.filter.ENTITY_ID).toBe('DYNAMIC_1036_STAGE_7')
     expect(JSON.stringify(dialogs)).not.toContain('SECRET')
     // значения полей в журнал не попадают
     expect(logs).not.toContain('Директор')

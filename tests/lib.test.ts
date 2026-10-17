@@ -177,3 +177,12 @@ describe('дни рождения (staff_birthdays)', () => {
     ]).toEqual([0, 3, 1, -2, 363])
   })
 })
+
+describe('время брони (booking_list)', () => {
+  it('в поясе самой брони, неизвестный пояс и без пояса — по смещению портала', async () => {
+    const { localTime } = await import('../server/lib/people')
+    // 2026-10-17 09:00 UTC
+    expect([localTime(1792227600, 'Europe/Minsk', 0), localTime(1792227600, 'Europe/Berlin', 0), localTime(1792227600, 'Mars/Base', 180), localTime(1792227600, '', 60)])
+      .toEqual(['2026-10-17 12:00', '2026-10-17 11:00', '2026-10-17 12:00', '2026-10-17 10:00'])
+  })
+})

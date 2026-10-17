@@ -27,3 +27,15 @@ export function daysToBirthday(md: { month: number, day: number }, today: Date, 
   }
   return best
 }
+
+/** Время брони «ГГГГ-ММ-ДД ЧЧ:ММ» в часовом поясе самой брони (datePeriod.*.timezone); нет пояса — по смещению. */
+export function localTime(ts: number, timezone: unknown, offsetMin: number): string {
+  if (typeof timezone === 'string' && timezone) {
+    try {
+      const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ts * 1000)).map(p => [p.type, p.value]))
+      return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`
+    }
+    catch { /* неизвестный пояс — по смещению */ }
+  }
+  return new Date((ts + offsetMin * 60) * 1000).toISOString().slice(0, 16).replace('T', ' ')
+}
