@@ -67,13 +67,14 @@ const defs: Record<(typeof WRITE_TOOLS)[number], Def> = {
   },
   task_create: {
     title: 'Создать задачу',
-    description: 'Создать задачу. Ответственный по умолчанию — сам сотрудник. crm — привязки вида D_12 (сделка), L_3 (лид), C_5 (контакт), CO_7 (компания).',
+    description: 'Создать задачу или подзадачу (parentId — ID родительской: так проект раскладывается на шаги). Ответственный по умолчанию — сам сотрудник. crm — привязки вида D_12 (сделка), L_3 (лид), C_5 (контакт), CO_7 (компания).',
     input: {
       title: z.string().min(1).max(250),
       description: z.string().max(20000).optional(),
       responsibleId: id.optional(),
       deadline: dateTime.optional(),
       groupId: id.optional(),
+      parentId: id.optional().describe('ID родительской задачи'),
       crm: z.array(z.string().regex(/^(D|L|C|CO)_\d+$/)).max(20).optional(),
     },
     handler: async (a) => {
@@ -82,10 +83,11 @@ const defs: Record<(typeof WRITE_TOOLS)[number], Def> = {
       fields.RESPONSIBLE_ID = a.responsibleId ?? (await b24Call('task_create', 'user.current', {}, {})).result.ID
       if (a.deadline) fields.DEADLINE = a.deadline
       if (a.groupId) fields.GROUP_ID = a.groupId
+      if (a.parentId) fields.PARENT_ID = a.parentId
       if (a.crm?.length) fields.UF_CRM_TASK = a.crm
       const { result } = await b24Call('task_create', 'tasks.task.add', { fields }, a)
       const t = result?.task ?? {}
-      return { id: Number(t.id), title: t.title, status: statusName(t.status), deadline: t.deadline ?? null, responsibleId: Number(t.responsibleId) }
+      return { id: Number(t.id), title: t.title, status: statusName(t.status), deadline: t.deadline ?? null, responsibleId: Number(t.responsibleId), ...(t.parentId ? { parentId: Number(t.parentId) } : {}) }
     },
   },
   task_update: {
