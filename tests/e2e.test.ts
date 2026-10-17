@@ -353,6 +353,10 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     // схема из манифеста проверяется до портала
     const bad = await mcp(t.access_token, 'tools/call', { name: 'kb_search', arguments: { limit: 500 } })
     expect(bad.body.result.isError).toBe(true)
+    // отказ модуля: модели — код и текст модуля, очищенный от управляющих символов, в одну строку
+    const refused = await mcp(t.access_token, 'tools/call', { name: 'kb_search', arguments: { query: 'плохой' } })
+    expect(refused.body.result.isError).toBe(true)
+    expect(refused.body.result.content[0].text).toBe('[502] Битрикс24 отказал: INVALID_ARG_VALUE — Слишком короткий запрос')
     expect(logs).toMatch(/"tool":"module:kb_search","method":"shef.kb.search","args":\["query"\],"ok":true/)
   })
 

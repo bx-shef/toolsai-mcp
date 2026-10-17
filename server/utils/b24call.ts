@@ -1,12 +1,18 @@
 import { audit } from '../lib/audit'
 import { B24Error, ReloginRequired } from '../lib/b24'
+import { cleanText } from '../lib/manifest'
 import type { Session } from '../lib/oauth'
 
 /**
  * REST из инструмента от имени сотрудника, подключившего клиента.
  * Кто вызывает — из Bearer-токена (middleware 00.auth.ts), никогда не из аргументов инструмента.
+ *
+ * moduleText — инструмент модуля портала (манифест): к коду отказа добавляется текст ошибки
+ * модуля (error_description, очищенный, до 300 знаков), чтобы модель поняла, что исправить
+ * («Выберите сотрудников или отделы»). Модули доверенные — их задаёт администратор; у встроенных
+ * инструментов текст ядра по-прежнему не показываем.
  */
-export async function b24Call(tool: string, method: string, params: Record<string, unknown>, args: object = {}) {
+export async function b24Call(tool: string, method: string, params: Record<string, unknown>, args: object = {}, moduleText = false) {
   const session = useEvent().context.session as Session | undefined
   if (!session) throw createError({ statusCode: 401, message: 'Нет сессии' })
   // Лицензия портала: без неё ИИ не работает с порталом (при LICENSE_REQUIRED=1)
@@ -29,8 +35,11 @@ export async function b24Call(tool: string, method: string, params: Record<strin
     }
     // Отсутствие записи — отдельно: модель должна понять, что ID неверный, а не что портал сломан.
     if (e instanceof B24Error && e.code === 'NOT_FOUND') throw createError({ statusCode: 404, message: 'Не найдено: записи с таким ID нет или она недоступна сотруднику' })
-    // Клиенту — только код ошибки Битрикс24, без внутреннего текста.
-    if (e instanceof B24Error) throw createError({ statusCode: 502, message: `Битрикс24 отказал: ${e.code}` })
+    // Клиенту — только код ошибки Битрикс24, без внутреннего текста; модулю — с его текстом.
+    if (e instanceof B24Error) {
+      const text = moduleText ? cleanText(e.message, 300, true) : ''
+      throw createError({ statusCode: 502, message: `Битрикс24 отказал: ${e.code}${text ? ` — ${text}` : ''}` })
+    }
     throw e
   }
 }

@@ -108,7 +108,7 @@ export default defineNitroPlugin((nitroApp) => {
             // сверх схемы) модель не протащит.
             const params = pickArgs(tool.input, args)
             try {
-              const res = await b24Call(`module:${tool.name}`, tool.method, params, params)
+              const res = await b24Call(`module:${tool.name}`, tool.method, params, params, true)
               const out = res.next !== undefined || res.total !== undefined ? { result: res.result, next: res.next ?? null, total: res.total } : res.result
               return { content: [{ type: 'text' as const, text: JSON.stringify(out, null, 2) }] }
             }
