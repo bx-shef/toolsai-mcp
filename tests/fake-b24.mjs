@@ -92,6 +92,7 @@ export function startFakeB24({ port = 0, host = '127.0.0.1' } = {}) {
       if (method === 'im.dialog.messages.get') return json(200, { result: { chat_id: 28, messages: [{ id: 2, author_id: 7, date: 'd', text: 'готово' }, { id: 1, author_id: 0, date: 'd', text: 'создал задачу' }] } })
       if (method === 'task.commentitem.getlist') return json(200, { result: [{ ID: '5', AUTHOR_ID: '7', POST_DATE: 'd', POST_MESSAGE: 'старый коммент' }] })
       if (method === 'user.current') return json(200, { result: { ID: String(uid), NAME: 'Тест', LAST_NAME: 'Тестов' } })
+      if (method === 'user.get') return json(200, { result: (p.FILTER?.ID ?? []).map(id => ({ ID: String(id), NAME: 'Имя' + id, LAST_NAME: 'Фамилия' })) })
       // CRM через crm.item.* (замер 2026-10-17): нет записи — NOT_FOUND; лид — «нет метода», чтобы проверить ошибку портала
       if (method === 'crm.item.get' && Number(p.entityTypeId) === 1) return json(400, { error: 'ERROR_METHOD_NOT_FOUND', error_description: 'Method not found!' })
       if (method === 'crm.item.get' && Number(p.id) === 404) return json(400, { error: 'NOT_FOUND', error_description: 'Элемент не найден' })
