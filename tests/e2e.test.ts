@@ -657,6 +657,23 @@ describe.skipIf(!process.env.CI && !existsSync('.output/server/index.mjs'))('e2e
     fake.state.user = 7
   })
 
+  it('посадочная: что это, встройка в коробку, типовые задачи с настоящими инструментами, цена', async () => {
+    const r = await fetch(`${BASE}/`)
+    expect(r.status).toBe(200)
+    expect(r.headers.get('content-security-policy')).not.toContain('script-src')
+    const html = await r.text()
+    for (const s of ['Как это встроено в коробку', 'Подключить ИИ', '1200 BYN', `${BASE}/connect`, `${BASE}/admin`]) expect(html).toContain(s)
+    expect(html).not.toContain('<script')
+    // каждый инструмент из «Типовых задач» есть на сервере
+    fake.state.user = 1
+    const t = await fullToken()
+    const names = new Set((await mcp(t.access_token, 'tools/list')).body.result.tools.map((x: any) => x.name))
+    const used = [...html.matchAll(/<code>([a-z_]+)<\/code>/g)].map(m => m[1])
+    expect(used.length).toBeGreaterThan(15)
+    for (const n of used) expect(names, n).toContain(n)
+    fake.state.user = 7
+  })
+
   it('/connect: адрес сервера и шаги клиентов, встраивается в слайдер, без скриптов', async () => {
     const r = await fetch(`${BASE}/connect`)
     expect(r.status).toBe(200)
